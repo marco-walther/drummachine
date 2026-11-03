@@ -1,10 +1,18 @@
 import * as Tone from 'tone'
-import { selectCurrentPattern, useProject } from '@/state/project'
+import { create } from 'zustand'
+import { makeNote, selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
 import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type ProjectData } from '@/state/types'
 import { isSilent } from './mixing'
 import { ensureSamples } from './samples'
-import { gainToDb, notesInWindow, secondsPerTick, stepInPattern, swingDelayTicks } from './timing'
+import {
+  gainToDb,
+  notesInWindow,
+  quantizeRecorded,
+  secondsPerTick,
+  stepInPattern,
+  swingDelayTicks
+} from './timing'
 import { createVoice, sourceKey, type Voice } from './voices'
 
 /**
@@ -48,6 +56,8 @@ function syncChannel(ch: Channel, anySolo: boolean) {
     voice.output.connect(channel)
     strip = { voice, channel, key, applied: { volume: NaN, pan: NaN, silent: false } }
     strips.set(ch.id, strip)
+  } else {
+    strip.voice.update(ch.source)
   }
   const a = strip.applied
   const silent = isSilent(ch, anySolo)
@@ -91,7 +101,8 @@ function tick(time: number) {
     if (!strip) continue
     for (const note of notesInWindow(pattern.notes[ch.id], windowStart, STEP_TICKS)) {
       const offset = note.tick - windowStart + swingDelayTicks(note.tick, state.swing)
-      strip.voice.trigger(time + offset * spt, note.velocity, ch.pitch + (note.key - ROOT_KEY))
+      const pitch = note.key + ch.pitch + note.finePitch / 100
+      strip.voice.play(time + offset * spt, pitch, note.velocity, note.length * spt)
     }
   }
 
@@ -116,6 +127,10 @@ export const engine = {
     const t = transport()
     t.PPQ = PPQ
     t.swing = 0 // swing is applied per-note in tick(); see timing.ts
+    // Tone loads its AudioWorklet module (used by the Pluck's comb filter) on first
+    // use, which takes a moment; warm it up now so the first pluck isn't silent.
+    const warm = new Tone.FeedbackCombFilter()
+    setTimeout(() => warm.dispose(), 5000)
     sync(useProject.getState())
     useProject.subscribe((s) => sync(s))
   },
@@ -150,6 +165,84 @@ export const engine = {
     await Tone.start()
     const ch = useProject.getState().channels.find((c) => c.id === channelId)
     const strip = strips.get(channelId)
-    if (ch && strip) strip.voice.trigger(Tone.now() + 0.01, 0.8, ch.pitch)
+    if (ch && strip) strip.voice.play(Tone.now() + 0.01, ROOT_KEY + ch.pitch, 0.8, 0.4)
+  },
+
+  /**
+   * Live note (computer keyboard, on-screen keys, MIDI) on a channel. `key` is
+   * the note's key (channel pitch is added, as for sequenced notes). Returns an
+   * id for noteOff. While recording + playing, the note is written into the
+   * current pattern when released (quantized to 1/16).
+   */
+  noteOn(channelId: string, key: number, velocity = 0.8): number | null {
+    const ch = useProject.getState().channels.find((c) => c.id === channelId)
+    const strip = strips.get(channelId)
+    if (!ch || !strip) return null
+    void Tone.start()
+    const now = Tone.immediate()
+    const release = strip.voice.hold(now + LIVE_LATENCY, key + ch.pitch, velocity)
+    const id = nextLiveId++
+    live.set(id, { release, channelId, key, velocity, startedAt: now, tick: patternTickNow() })
+    useHeldKeys.setState((s) => ({ keys: [...s.keys, key] }))
+    return id
+  },
+
+  noteOff(id: number | null) {
+    if (id === null) return
+    const n = live.get(id)
+    if (!n) return
+    live.delete(id)
+    const now = Tone.immediate()
+    n.release(Math.max(now, n.startedAt) + LIVE_LATENCY)
+    useHeldKeys.setState((s) => {
+      const i = s.keys.indexOf(n.key)
+      return i < 0 ? s : { keys: [...s.keys.slice(0, i), ...s.keys.slice(i + 1)] }
+    })
+    if (n.tick !== null && useTransportUi.getState().recording) recordNote(n, now)
+  },
+
+  allNotesOff() {
+    for (const id of [...live.keys()]) engine.noteOff(id)
   }
+}
+
+// ---- live notes & recording ----
+
+interface LiveNote {
+  release(time: number): void
+  channelId: string
+  key: number
+  velocity: number
+  startedAt: number
+  /** pattern position when pressed (null when not playing) */
+  tick: number | null
+}
+
+/**
+ * Live notes are scheduled this far ahead of "now". Too small and the audio
+ * thread may already be past the start (short events like a pluck's noise
+ * burst then never sound); 15 ms is below what players notice.
+ */
+const LIVE_LATENCY = 0.015
+
+const live = new Map<number, LiveNote>()
+let nextLiveId = 1
+
+/** Keys currently held (for highlighting on-screen keyboards). */
+export const useHeldKeys = create<{ keys: number[] }>(() => ({ keys: [] }))
+
+/** Position inside the current pattern at the moment you hear it (not the look-ahead). */
+function patternTickNow(): number | null {
+  if (!useTransportUi.getState().playing) return null
+  const len = selectCurrentPattern(useProject.getState()).lengthSteps * STEP_TICKS
+  const ticks = transport().getTicksAtTime(Tone.immediate())
+  return ((ticks % len) + len) % len
+}
+
+function recordNote(n: LiveNote, releasedAt: number) {
+  const state = useProject.getState()
+  const len = selectCurrentPattern(state).lengthSteps * STEP_TICKS
+  const heldTicks = (releasedAt - n.startedAt) / secondsPerTick(state.bpm)
+  const { tick, length } = quantizeRecorded(n.tick!, heldTicks, len)
+  state.addNote(n.channelId, makeNote(tick, { key: n.key, velocity: n.velocity, length }))
 }

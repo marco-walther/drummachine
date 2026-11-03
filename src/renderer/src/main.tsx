@@ -16,12 +16,19 @@ if (import.meta.env.DEV) {
     import('./state/file'),
     import('./state/library'),
     import('./audio/samples'),
-    import('./state/toasts')
-  ]).then(([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows, actions, file, library, samples, toasts]) => {
-    Object.assign(window, {
-      __dm: { Tone, engine, useProject, useTransportUi, layout, windows, actions, file, library, samples, toasts }
-    })
-  })
+    import('./state/toasts'),
+    import('./input/keyboard'),
+    import('./audio/engine'),
+    import('./audio/pitch'),
+    import('./state/project'),
+    import('./audio/voices')
+  ]).then(
+    ([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows, actions, file, library, samples, toasts, keyboard, engineModule, pitch, project, voices]) => {
+      Object.assign(window, {
+        __dm: { Tone, engine, useProject, useTransportUi, layout, windows, actions, file, library, samples, toasts, keyboard, engineModule, pitch, project, voices }
+      })
+    }
+  )
 }
 
 createRoot(document.getElementById('root')!).render(

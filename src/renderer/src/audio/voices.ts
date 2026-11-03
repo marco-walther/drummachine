@@ -1,30 +1,50 @@
 import * as Tone from 'tone'
-import type { ChannelSource, DrumPreset } from '@/state/types'
+import { ROOT_KEY, type ChannelSource, type DrumPreset, type SampleSource } from '@/state/types'
+import { createInstrumentVoice } from './instruments'
+import { monotonic, ratio } from './util'
 
-/** A sound generator for one channel. Output feeds the channel strip. */
+/**
+ * A sound generator for one channel; its output feeds the channel strip.
+ * Pitches are absolute MIDI numbers (may be fractional: cents), 60 = C5.
+ */
 export interface Voice {
   readonly output: Tone.ToneAudioNode
-  trigger(time: number, velocity: number, semitones: number): void
+  /** scheduled note (sequencer / Piano Roll) */
+  play(time: number, midi: number, velocity: number, duration: number): void
+  /** live note (keyboard / MIDI): returns a function that releases it */
+  hold(time: number, midi: number, velocity: number): (time: number) => void
+  /** apply changed settings in place (no rebuild, no dropped notes) */
+  update(source: ChannelSource): void
   dispose(): void
 }
 
-const ratio = (semis: number) => Math.pow(2, semis / 12)
+const noop = () => {}
 
-/** Mono Tone synths throw if two starts share a timestamp; nudge forward. */
-function monotonic() {
-  let last = -1
-  return (t: number) => (last = t <= last ? last + 1e-4 : t)
+/** Drums ignore duration and note-off; pitch is relative to C5. */
+function drum(trigger: (time: number, vel: number, semis: number) => void, output: Tone.ToneAudioNode, dispose: () => void): Voice {
+  return {
+    output,
+    play: (time, midi, vel) => trigger(time, vel, midi - ROOT_KEY),
+    hold: (time, midi, vel) => {
+      trigger(time, vel, midi - ROOT_KEY)
+      return noop
+    },
+    update: noop,
+    dispose
+  }
 }
 
 type MembraneOpts = ConstructorParameters<typeof Tone.MembraneSynth>[0]
 
-function membrane(baseHz: number, opts: MembraneOpts): Voice {
+function membrane(baseHz: number, opts: MembraneOpts) {
   const out = new Tone.Gain(1)
   const synth = new Tone.MembraneSynth(opts).connect(out)
   const at = monotonic()
+  const trigger = (time: number, vel: number, semis: number) =>
+    synth.triggerAttackRelease(baseHz * ratio(semis), 0.05, at(time), vel)
   return {
-    output: out,
-    trigger: (time, vel, semis) => synth.triggerAttackRelease(baseHz * ratio(semis), 0.05, at(time), vel),
+    out,
+    trigger,
     dispose: () => {
       synth.dispose()
       out.dispose()
@@ -32,11 +52,7 @@ function membrane(baseHz: number, opts: MembraneOpts): Voice {
   }
 }
 
-function noise(
-  filter: { type: BiquadFilterType; hz: number; q?: number },
-  decay: number,
-  bursts: number[] = [0]
-): Voice {
+function noise(filter: { type: BiquadFilterType; hz: number; q?: number }, decay: number, bursts: number[] = [0]) {
   const out = new Tone.Gain(1)
   const f = new Tone.Filter({ type: filter.type, frequency: filter.hz, Q: filter.q ?? 0.8 }).connect(out)
   const synth = new Tone.NoiseSynth({
@@ -44,14 +60,13 @@ function noise(
     envelope: { attack: 0.001, decay, sustain: 0, release: 0.02 }
   }).connect(f)
   const at = monotonic()
+  const trigger = (time: number, vel: number, semis: number) => {
+    f.frequency.setValueAtTime(filter.hz * ratio(semis), time)
+    bursts.forEach((offset, i) => synth.triggerAttackRelease(decay, at(time + offset), vel * (i === bursts.length - 1 ? 1 : 0.6)))
+  }
   return {
-    output: out,
-    trigger: (time, vel, semis) => {
-      f.frequency.setValueAtTime(filter.hz * ratio(semis), time)
-      bursts.forEach((offset, i) =>
-        synth.triggerAttackRelease(decay, at(time + offset), vel * (i === bursts.length - 1 ? 1 : 0.6))
-      )
-    },
+    out,
+    trigger,
     dispose: () => {
       synth.dispose()
       f.dispose()
@@ -60,46 +75,31 @@ function noise(
   }
 }
 
-function snare(): Voice {
-  const out = new Tone.Gain(1)
-  const body = membrane(185, {
-    pitchDecay: 0.02,
-    octaves: 1.5,
-    envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.05 }
-  })
-  const rattle = noise({ type: 'highpass', hz: 1400 }, 0.18)
-  body.output.connect(out)
-  rattle.output.connect(out)
-  return {
-    output: out,
-    trigger: (time, vel, semis) => {
-      body.trigger(time, vel * 0.7, semis)
-      rattle.trigger(time, vel, semis)
-    },
-    dispose: () => {
-      body.dispose()
-      rattle.dispose()
-      out.dispose()
-    }
-  }
-}
-
-export function createDrumVoice(preset: DrumPreset): Voice {
+function drumParts(preset: DrumPreset) {
   switch (preset) {
     case 'kick':
-      return membrane(48, {
-        pitchDecay: 0.05,
-        octaves: 6,
-        envelope: { attack: 0.001, decay: 0.42, sustain: 0, release: 0.1 }
-      })
+      return membrane(48, { pitchDecay: 0.05, octaves: 6, envelope: { attack: 0.001, decay: 0.42, sustain: 0, release: 0.1 } })
     case 'tom':
-      return membrane(110, {
-        pitchDecay: 0.08,
-        octaves: 2.5,
-        envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 }
-      })
-    case 'snare':
-      return snare()
+      return membrane(110, { pitchDecay: 0.08, octaves: 2.5, envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.1 } })
+    case 'snare': {
+      const out = new Tone.Gain(1)
+      const body = membrane(185, { pitchDecay: 0.02, octaves: 1.5, envelope: { attack: 0.001, decay: 0.12, sustain: 0, release: 0.05 } })
+      const rattle = noise({ type: 'highpass', hz: 1400 }, 0.18)
+      body.out.connect(out)
+      rattle.out.connect(out)
+      return {
+        out,
+        trigger: (time: number, vel: number, semis: number) => {
+          body.trigger(time, vel * 0.7, semis)
+          rattle.trigger(time, vel, semis)
+        },
+        dispose: () => {
+          body.dispose()
+          rattle.dispose()
+          out.dispose()
+        }
+      }
+    }
     case 'clap':
       return noise({ type: 'bandpass', hz: 1200, q: 1.2 }, 0.16, [0, 0.011, 0.022, 0.033])
     case 'hat':
@@ -109,33 +109,82 @@ export function createDrumVoice(preset: DrumPreset): Voice {
   }
 }
 
-/** Decoded user samples by id. Filled by the sample browser (Phase 3). */
+export function createDrumVoice(preset: DrumPreset): Voice {
+  const p = drumParts(preset)
+  return drum(p.trigger, p.out, p.dispose)
+}
+
+/** Decoded user samples by id (filled by audio/samples.ts). */
 export const sampleBuffers = new Map<string, Tone.ToneAudioBuffer>()
 
-function sampleVoice(sampleId: string): Voice {
+/**
+ * A user sample played at any pitch: `root` is the key that plays it as
+ * recorded. One-shot plays the whole file; otherwise it stops at note end with
+ * a release fade (instrument use, e.g. a guitar note on the keyboard).
+ */
+function sampleVoice(initial: SampleSource): Voice {
+  let s = initial
   const out = new Tone.Gain(1)
+
+  function start(time: number, midi: number, vel: number) {
+    const buffer = sampleBuffers.get(s.sampleId)
+    if (!buffer?.loaded) return null
+    const node = new Tone.ToneBufferSource({ url: buffer, playbackRate: ratio(midi - s.root) })
+    const g = new Tone.Gain(0).connect(out)
+    node.connect(g)
+    g.gain.setValueAtTime(0, time)
+    g.gain.linearRampToValueAtTime(vel, time + Math.max(0.002, s.attack))
+    node.onended = () => {
+      node.dispose()
+      g.dispose()
+    }
+    node.start(time)
+    return (t: number) => {
+      const r = Math.max(0.005, s.release)
+      g.gain.cancelAndHoldAtTime(t)
+      g.gain.linearRampToValueAtTime(0, t + r)
+      node.stop(t + r + 0.01)
+    }
+  }
+
   return {
     output: out,
-    trigger: (time, vel, semis) => {
-      const buffer = sampleBuffers.get(sampleId)
-      if (!buffer?.loaded) return
-      const src = new Tone.ToneBufferSource({ url: buffer, playbackRate: ratio(semis) })
-      const g = new Tone.Gain(vel).connect(out)
-      src.connect(g)
-      src.onended = () => {
-        src.dispose()
-        g.dispose()
+    play: (time, midi, vel, duration) => {
+      const stop = start(time, midi, vel)
+      if (stop && !s.oneShot) stop(time + duration)
+    },
+    hold: (time, midi, vel) => {
+      const stop = start(time, midi, vel)
+      return (t) => {
+        if (stop && !s.oneShot) stop(t)
       }
-      src.start(time)
+    },
+    update: (src) => {
+      if (src.type === 'sample') s = src
     },
     dispose: () => out.dispose()
   }
 }
 
 export function createVoice(source: ChannelSource): Voice {
-  return source.type === 'synth' ? createDrumVoice(source.preset) : sampleVoice(source.sampleId)
+  switch (source.type) {
+    case 'synth':
+      return createDrumVoice(source.preset)
+    case 'sample':
+      return sampleVoice(source)
+    case 'instrument':
+      return createInstrumentVoice(source.kind, source.params)
+  }
 }
 
+/** Voices are rebuilt only when this changes; other settings go through update(). */
 export function sourceKey(source: ChannelSource): string {
-  return source.type === 'synth' ? `synth:${source.preset}` : `sample:${source.sampleId}`
+  switch (source.type) {
+    case 'synth':
+      return `synth:${source.preset}`
+    case 'sample':
+      return `sample:${source.sampleId}`
+    case 'instrument':
+      return `inst:${source.kind}`
+  }
 }

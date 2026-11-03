@@ -7,9 +7,37 @@ export const ROOT_KEY = 60
 
 export type DrumPreset = 'kick' | 'snare' | 'clap' | 'hat' | 'openhat' | 'tom'
 
+export type InstrumentKind = 'piano' | 'synth' | 'bass' | 'pad' | 'pluck'
+
+/** Common, instrument-agnostic sound controls (each instrument maps them). */
+export interface InstrumentParams {
+  /** seconds */
+  attack: number
+  /** seconds */
+  release: number
+  /** 0..1: filter/modulation brightness */
+  brightness: number
+  /** seconds of pitch glide between notes (mono instruments) */
+  glide: number
+}
+
+export interface SampleSource {
+  type: 'sample'
+  sampleId: string
+  /** MIDI key that plays the file at its recorded pitch (60 = C5) */
+  root: number
+  /** true: always play the whole file (drums); false: stop at note end (instrument use) */
+  oneShot: boolean
+  /** seconds */
+  attack: number
+  /** seconds (used when not one-shot) */
+  release: number
+}
+
 export type ChannelSource =
   | { type: 'synth'; preset: DrumPreset }
-  | { type: 'sample'; sampleId: string }
+  | SampleSource
+  | { type: 'instrument'; kind: InstrumentKind; params: InstrumentParams }
 
 export interface Channel {
   id: string

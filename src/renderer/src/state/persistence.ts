@@ -1,6 +1,6 @@
 import { PROJECT_FORMAT, PROJECT_VERSION, type ProjectDoc, type SampleDocEntry } from '@shared/api'
-import { initialProject, makeChannel, makeNote, makePattern, uid } from './project'
-import type { Channel, ChannelSource, DrumPreset, Note, Pattern, ProjectData, SampleRef } from './types'
+import { INSTRUMENT_DEFAULTS, initialProject, makeChannel, makeNote, makePattern, sampleSource, uid } from './project'
+import type { Channel, ChannelSource, DrumPreset, InstrumentKind, Note, Pattern, ProjectData, SampleRef } from './types'
 
 /**
  * Project ⇄ file document. Loading is defensive: anything missing or malformed
@@ -36,11 +36,36 @@ const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity) =>
 const str = (v: unknown, d: string) => (typeof v === 'string' && v.length > 0 ? v : d)
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
 
+const KINDS = Object.keys(INSTRUMENT_DEFAULTS) as InstrumentKind[]
+
 function readSource(v: unknown, samples: Record<string, SampleRef>): ChannelSource | null {
   if (!isObj(v)) return null
   if (v.type === 'synth' && PRESETS.includes(v.preset as DrumPreset)) return { type: 'synth', preset: v.preset as DrumPreset }
-  if (v.type === 'sample' && typeof v.sampleId === 'string' && samples[v.sampleId])
-    return { type: 'sample', sampleId: v.sampleId }
+  if (v.type === 'sample' && typeof v.sampleId === 'string' && samples[v.sampleId]) {
+    // Phase 3 files have no root/oneShot/envelope: defaults keep them sounding the same
+    const d = sampleSource(v.sampleId)
+    return sampleSource(v.sampleId, {
+      root: Math.round(num(v.root, d.root, 0, 127)),
+      oneShot: bool(v.oneShot, d.oneShot),
+      attack: num(v.attack, d.attack, 0, 5),
+      release: num(v.release, d.release, 0, 10)
+    })
+  }
+  if (v.type === 'instrument' && KINDS.includes(v.kind as InstrumentKind)) {
+    const kind = v.kind as InstrumentKind
+    const d = INSTRUMENT_DEFAULTS[kind]
+    const p = isObj(v.params) ? v.params : {}
+    return {
+      type: 'instrument',
+      kind,
+      params: {
+        attack: num(p.attack, d.attack, 0.001, 5),
+        release: num(p.release, d.release, 0.01, 10),
+        brightness: num(p.brightness, d.brightness, 0, 1),
+        glide: num(p.glide, d.glide, 0, 1)
+      }
+    }
+  }
   return null
 }
 

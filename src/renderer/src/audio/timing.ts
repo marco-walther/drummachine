@@ -25,6 +25,21 @@ export function notesInWindow(notes: Note[] | undefined, startTick: number, span
   return notes.filter((n) => n.tick >= startTick && n.tick < end)
 }
 
+/**
+ * Live-recorded note → pattern note: start snaps to the nearest 1/16 (wrapping
+ * at the pattern end), length snaps to whole 1/16s, at least one step and at
+ * most the pattern length.
+ */
+export function quantizeRecorded(
+  startTick: number,
+  heldTicks: number,
+  patternLength: number
+): { tick: number; length: number } {
+  const tick = (Math.round(startTick / STEP_TICKS) * STEP_TICKS) % patternLength
+  const length = Math.min(patternLength, Math.max(STEP_TICKS, Math.round(heldTicks / STEP_TICKS) * STEP_TICKS))
+  return { tick, length }
+}
+
 /** Linear gain → decibels for Tone volume params. */
 export function gainToDb(g: number): number {
   return g <= 0 ? -Infinity : 20 * Math.log10(g)

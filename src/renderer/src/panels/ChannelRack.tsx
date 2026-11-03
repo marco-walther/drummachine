@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react'
-import { AudioLines, Plus } from 'lucide-react'
+import { Plus, SlidersHorizontal } from 'lucide-react'
 import { engine } from '@/audio/engine'
 import { useSampleStatus } from '@/audio/samples'
 import { DragNumber } from '@/components/DragNumber'
@@ -15,12 +15,23 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { notesInStep, PRESET_NAMES, selectCurrentPattern, useProject } from '@/state/project'
+import {
+  INSTRUMENT_NAMES,
+  instrumentSource,
+  notesInStep,
+  PRESET_NAMES,
+  selectCurrentPattern,
+  useProject
+} from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
-import type { Channel, DrumPreset, Note } from '@/state/types'
+import type { Channel, DrumPreset, InstrumentKind, Note } from '@/state/types'
+import { SourceIcon } from '@/panels/ChannelSettings'
+import { showPanel } from '@/workspace/layout'
 import { isSampleDrag, readSampleDrop } from '@/workspace/dnd'
 import { addSampleChannels, importSamples } from '@/workspace/project-actions'
 import { addGlobalListener } from '@/workspace/windows'
@@ -118,12 +129,21 @@ export function ChannelRack() {
                 <Plus size={13} /> Add channel
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
+            <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuLabel className="text-[11px] font-normal text-muted">Instruments</DropdownMenuLabel>
+              {(Object.keys(INSTRUMENT_NAMES) as InstrumentKind[]).map((k) => (
+                <DropdownMenuItem key={k} onSelect={() => addChannel(instrumentSource(k))}>
+                  {INSTRUMENT_NAMES[k]}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[11px] font-normal text-muted">Drums</DropdownMenuLabel>
               {(Object.keys(PRESET_NAMES) as DrumPreset[]).map((p) => (
                 <DropdownMenuItem key={p} onSelect={() => addChannel({ type: 'synth', preset: p })}>
                   {PRESET_NAMES[p]}
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void importSamples()}>Your sample or track…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -328,7 +348,7 @@ const ChannelRow = memo(function ChannelRow({
                 }}
                 onDoubleClick={() => setRenaming(true)}
               >
-                {ch.source.type === 'sample' && <AudioLines size={12} className="shrink-0 text-faint" />}
+                {ch.source.type !== 'synth' && <SourceIcon source={ch.source} className="text-faint" />}
                 <span className={cn('truncate', missing && 'text-faint line-through')}>{ch.name}</span>
                 {missing && <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">missing</span>}
               </button>
@@ -348,6 +368,17 @@ const ChannelRow = memo(function ChannelRow({
             <ContextMenuItem onSelect={() => removeChannel(ch.id)}>Delete channel</ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
+        <button
+          aria-label={`${ch.name} settings`}
+          title="Channel settings: sound, root note, keyboard"
+          onClick={() => {
+            selectChannel(ch.id)
+            showPanel('channel')
+          }}
+          className="grid size-6 shrink-0 place-items-center rounded-sm text-faint hover:bg-card hover:text-ink"
+        >
+          <SlidersHorizontal size={12} />
+        </button>
       </div>
 
       {/* steps */}

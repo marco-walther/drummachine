@@ -6,14 +6,15 @@ import { create } from 'zustand'
  * and the commands the UI/shortcuts call (show, pop out, dock back, reset).
  */
 
-export type PanelId = 'browser' | 'channelRack' | 'pianoRoll' | 'playlist' | 'mixer'
+export type PanelId = 'browser' | 'channelRack' | 'channel' | 'pianoRoll' | 'playlist' | 'mixer'
 
-export const PANELS: Record<PanelId, { title: string; shortcut: string }> = {
+export const PANELS: Record<PanelId, { title: string; shortcut?: string }> = {
   playlist: { title: 'Playlist', shortcut: 'F5' },
   channelRack: { title: 'Channel Rack', shortcut: 'F6' },
   pianoRoll: { title: 'Piano Roll', shortcut: 'F7' },
   browser: { title: 'Browser', shortcut: 'F8' },
-  mixer: { title: 'Mixer', shortcut: 'F9' }
+  mixer: { title: 'Mixer', shortcut: 'F9' },
+  channel: { title: 'Channel' }
 }
 
 export const SHORTCUTS: Record<string, PanelId> = {
@@ -35,8 +36,8 @@ function add(a: DockviewApi, id: PanelId, extra: Record<string, unknown> = {}): 
 }
 
 /**
- * Default: Browser on the left; Channel Rack (+ Piano Roll tab) on top;
- * Playlist (+ Mixer tab) underneath. The Channel Rack is focused.
+ * Default: Browser on the left; Channel Rack (+ Piano Roll tab) on top with
+ * the Channel settings beside it; Playlist (+ Mixer tab) underneath.
  */
 export function applyDefaultLayout(a: DockviewApi) {
   a.clear()
@@ -44,8 +45,17 @@ export function applyDefaultLayout(a: DockviewApi) {
   add(a, 'pianoRoll', { position: { referencePanel: 'channelRack', direction: 'within' }, inactive: true })
   add(a, 'playlist', { position: { referencePanel: 'channelRack', direction: 'below' } })
   add(a, 'mixer', { position: { referencePanel: 'playlist', direction: 'within' }, inactive: true })
+  add(a, 'channel', { ...channelPlacement(a), inactive: true })
   add(a, 'browser', { position: { direction: 'left' }, initialWidth: 220 })
   rack.api.setActive()
+}
+
+/** The Channel panel goes to the right of the Channel Rack when the rack is docked. */
+function channelPlacement(a: DockviewApi) {
+  const rack = a.getPanel('channelRack')
+  return rack && rack.group.api.location.type === 'grid'
+    ? { position: { referencePanel: 'channelRack', direction: 'right' }, initialWidth: 340 }
+    : {}
 }
 
 /** Restore the saved layout, falling back to the default. */
@@ -83,7 +93,13 @@ export function showPanel(id: PanelId) {
   let panel = a.getPanel(id)
   if (!panel) {
     const ref = a.activePanel && a.activePanel.group.api.location.type === 'grid' ? a.activePanel : undefined
-    panel = add(a, id, ref ? { position: { referencePanel: ref.id, direction: 'within' } } : {})
+    const placement =
+      id === 'channel' && a.getPanel('channelRack')
+        ? channelPlacement(a)
+        : ref
+          ? { position: { referencePanel: ref.id, direction: 'within' } }
+          : {}
+    panel = add(a, id, placement)
   }
   panel.api.setActive()
   const loc = panel.group.api.location

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { initialProject, notesInStep, selectCurrentPattern, useProject } from './project'
+import { initialProject, instrumentSource, makeNote, notesInStep, selectCurrentPattern, useProject } from './project'
 import { STEP_TICKS } from './types'
 
 const s = () => useProject.getState()
@@ -95,6 +95,43 @@ describe('project store', () => {
     const id = src.type === 'sample' ? src.sampleId : ''
     s().relinkSamples({ [id]: '/project/samples/a.wav' })
     expect(s().samples[id].path).toBe('/project/samples/a.wav')
+  })
+
+  it('switching a default-named channel to an instrument renames it; a renamed one keeps its name', () => {
+    const [kick, clap] = s().channels
+    s().setChannelSource(kick.id, instrumentSource('piano'))
+    s().updateChannel(clap.id, { name: 'My clap' })
+    s().setChannelSource(clap.id, instrumentSource('bass'))
+    expect(s().channels[0].name).toBe('Piano')
+    expect(s().channels[1].name).toBe('My clap')
+    expect(s().channels[1].source).toMatchObject({ type: 'instrument', kind: 'bass' })
+  })
+
+  it('sample settings are clamped; replacing the file keeps how it plays', () => {
+    const id = s().addSampleChannel('/g/guitar A2.wav', 'guitar A2')
+    s().updateSampleSettings(id, { root: 45.4, oneShot: false, attack: -1, release: 99 })
+    let src = s().channels.find((c) => c.id === id)!.source
+    expect(src).toMatchObject({ root: 45, oneShot: false, attack: 0, release: 10 })
+    s().setChannelSample(id, '/g/guitar E2.wav', 'guitar E2')
+    src = s().channels.find((c) => c.id === id)!.source
+    expect(src).toMatchObject({ oneShot: false, root: 60 }) // new file: fresh root, same playback mode
+  })
+
+  it('instrument params are clamped', () => {
+    const id = s().addChannel(instrumentSource('synth'))
+    s().updateInstrumentParams(id, { brightness: 3, attack: 0 })
+    const src = s().channels.find((c) => c.id === id)!.source
+    expect(src.type === 'instrument' && [src.params.brightness, src.params.attack]).toEqual([1, 0.001])
+  })
+
+  it('addNote records into the current pattern in time order', () => {
+    const kick = s().channels[0].id
+    s().addNote(kick, makeNote(48, { key: 64 }))
+    s().addNote(kick, makeNote(0, { key: 60 }))
+    expect(notes(kick).map((n) => [n.tick, n.key])).toEqual([
+      [0, 60],
+      [48, 64]
+    ])
   })
 
   it('clamps bpm and channel params', () => {

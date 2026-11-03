@@ -5,6 +5,8 @@ export interface TransportUi {
   playing: boolean
   /** current step within the pattern, -1 when stopped */
   step: number
+  /** record armed: live notes played while playing are written into the pattern */
+  recording: boolean
 }
 
-export const useTransportUi = create<TransportUi>(() => ({ playing: false, step: -1 }))
+export const useTransportUi = create<TransportUi>(() => ({ playing: false, step: -1, recording: false }))

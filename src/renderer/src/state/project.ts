@@ -6,9 +6,12 @@ import {
   type Channel,
   type ChannelSource,
   type DrumPreset,
+  type InstrumentKind,
+  type InstrumentParams,
   type Note,
   type Pattern,
-  type ProjectData
+  type ProjectData,
+  type SampleSource
 } from './types'
 
 export const uid = (): string => crypto.randomUUID().slice(0, 8)
@@ -22,10 +25,40 @@ export const PRESET_NAMES: Record<DrumPreset, string> = {
   tom: 'Tom'
 }
 
+export const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
+  piano: 'Piano',
+  synth: 'Synth',
+  bass: 'Bass',
+  pad: 'Pad',
+  pluck: 'Pluck'
+}
+
+export const INSTRUMENT_DEFAULTS: Record<InstrumentKind, InstrumentParams> = {
+  piano: { attack: 0.002, release: 1.2, brightness: 0.45, glide: 0 },
+  synth: { attack: 0.005, release: 0.25, brightness: 0.6, glide: 0 },
+  bass: { attack: 0.003, release: 0.12, brightness: 0.35, glide: 0.04 },
+  pad: { attack: 0.6, release: 1.8, brightness: 0.4, glide: 0 },
+  pluck: { attack: 0.001, release: 0.6, brightness: 0.6, glide: 0 }
+}
+
+export function sampleSource(sampleId: string, partial: Partial<Omit<SampleSource, 'type' | 'sampleId'>> = {}): SampleSource {
+  return { type: 'sample', sampleId, root: ROOT_KEY, oneShot: true, attack: 0, release: 0.08, ...partial }
+}
+
+export function instrumentSource(kind: InstrumentKind): ChannelSource {
+  return { type: 'instrument', kind, params: { ...INSTRUMENT_DEFAULTS[kind] } }
+}
+
+export function sourceName(source: ChannelSource): string {
+  if (source.type === 'synth') return PRESET_NAMES[source.preset]
+  if (source.type === 'instrument') return INSTRUMENT_NAMES[source.kind]
+  return 'Sample'
+}
+
 export function makeChannel(source: ChannelSource, name?: string): Channel {
   return {
     id: uid(),
-    name: name ?? (source.type === 'synth' ? PRESET_NAMES[source.preset] : 'Sample'),
+    name: name ?? sourceName(source),
     source,
     volume: 0.78,
     pan: 0,
@@ -94,6 +127,12 @@ export interface ProjectActions {
   setChannelSample(channelId: string, path: string, name: string): void
   /** Point a sample at a new location (after saving into the project folder). */
   relinkSamples(paths: Record<string, string>): void
+  /** Switch what a channel plays (drum preset, instrument, …). */
+  setChannelSource(channelId: string, source: ChannelSource, rename?: boolean): void
+  updateSampleSettings(channelId: string, patch: Partial<Omit<SampleSource, 'type' | 'sampleId'>>): void
+  updateInstrumentParams(channelId: string, patch: Partial<InstrumentParams>): void
+  /** Add a note to the current pattern (live recording). */
+  addNote(channelId: string, note: Note): void
   // channels
   addChannel(source: ChannelSource, name?: string): string
   removeChannel(id: string): void
@@ -139,17 +178,56 @@ export const useProject = create<ProjectStore>()(
       },
       addSampleChannel: (path, name) => {
         const sampleId = get().addSample(path, name)
-        return get().addChannel({ type: 'sample', sampleId }, name)
+        return get().addChannel(sampleSource(sampleId), name)
       },
       setChannelSample: (channelId, path, name) => {
         const sampleId = get().addSample(path, name)
         set((s) => {
           const ch = s.channels.find((c) => c.id === channelId)
           if (!ch) return
-          ch.source = { type: 'sample', sampleId }
+          // keep how the channel plays (one-shot/envelope); the new file gets a fresh root
+          const prev = ch.source.type === 'sample' ? ch.source : undefined
+          ch.source = sampleSource(sampleId, prev ? { oneShot: prev.oneShot, attack: prev.attack, release: prev.release } : {})
           ch.name = name
         })
       },
+      setChannelSource: (channelId, source, rename = true) =>
+        set((s) => {
+          const ch = s.channels.find((c) => c.id === channelId)
+          if (!ch) return
+          // rename only if the user hasn't: name is still the old default (or the old file's name)
+          const old = ch.source
+          const defaultName = old.type === 'sample' ? (s.samples[old.sampleId]?.name ?? 'Sample') : sourceName(old)
+          if (rename && ch.name === defaultName && source.type !== 'sample') ch.name = sourceName(source)
+          ch.source = source
+        }),
+      updateSampleSettings: (channelId, patch) =>
+        set((s) => {
+          const src = s.channels.find((c) => c.id === channelId)?.source
+          if (src?.type !== 'sample') return
+          Object.assign(src, patch)
+          src.root = clamp(Math.round(src.root), 0, 127)
+          src.attack = clamp(src.attack, 0, 5)
+          src.release = clamp(src.release, 0, 10)
+        }),
+      updateInstrumentParams: (channelId, patch) =>
+        set((s) => {
+          const src = s.channels.find((c) => c.id === channelId)?.source
+          if (src?.type !== 'instrument') return
+          const p = Object.assign(src.params, patch)
+          p.attack = clamp(p.attack, 0.001, 5)
+          p.release = clamp(p.release, 0.01, 10)
+          p.brightness = clamp(p.brightness, 0, 1)
+          p.glide = clamp(p.glide, 0, 1)
+        }),
+      addNote: (channelId, note) =>
+        set((s) => {
+          const p = current(s)
+          if (!s.channels.some((c) => c.id === channelId)) return
+          const notes = (p.notes[channelId] ??= [])
+          notes.push(note)
+          notes.sort((a, b) => a.tick - b.tick)
+        }),
       relinkSamples: (paths) =>
         set((s) => {
           for (const [id, path] of Object.entries(paths)) if (s.samples[id]) s.samples[id].path = path

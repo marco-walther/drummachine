@@ -1,5 +1,17 @@
 import { useState } from 'react'
-import { ChevronDown, LayoutPanelTop, Moon, Play, RotateCcw, Square, Sun, SunMoon } from 'lucide-react'
+import {
+  ChevronDown,
+  Circle,
+  Keyboard,
+  LayoutPanelTop,
+  Moon,
+  Play,
+  RotateCcw,
+  Square,
+  Sun,
+  SunMoon
+} from 'lucide-react'
+import { useTypingKeyboard } from '@/input/keyboard'
 import { engine } from '@/audio/engine'
 import { DragNumber } from '@/components/DragNumber'
 import { FileMenu, ProjectName } from '@/components/FileMenu'
@@ -35,6 +47,8 @@ const THEME_ICON = { auto: SunMoon, light: Sun, dark: Moon }
 
 export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m: ThemeMode): void }) {
   const playing = useTransportUi((s) => s.playing)
+  const recording = useTransportUi((s) => s.recording)
+  const typing = useTypingKeyboard((s) => s.enabled)
   const bpm = useProject((s) => s.bpm)
   const setBpm = useProject((s) => s.setBpm)
   const masterVolume = useProject((s) => s.masterVolume)
@@ -57,6 +71,30 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
           )}
         >
           {playing ? <Square size={12} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
+        </button>
+        <button
+          aria-label={recording ? 'Stop recording' : 'Record notes you play'}
+          aria-pressed={recording}
+          title="Record: notes you play (keyboard / MIDI) while playing are written into the pattern"
+          onClick={() => useTransportUi.setState({ recording: !recording })}
+          className={cn(
+            'grid size-7 place-items-center rounded-sm border transition-colors',
+            recording ? 'border-inv bg-inv text-inv-ink' : 'border-line-strong text-ink hover:border-ink'
+          )}
+        >
+          <Circle size={11} fill={recording ? 'currentColor' : 'none'} strokeWidth={2.4} />
+        </button>
+        <button
+          aria-label="Typing keyboard plays notes"
+          aria-pressed={typing}
+          title={`Typing keyboard plays notes (piano layout: A–' white keys, W E T Y U O P ] black keys, Z/X octave): ${typing ? 'on' : 'off'}`}
+          onClick={() => useTypingKeyboard.setState({ enabled: !typing })}
+          className={cn(
+            'grid size-7 place-items-center rounded-sm border transition-colors',
+            typing ? 'border-line-strong text-ink hover:border-ink' : 'border-line text-faint hover:text-muted'
+          )}
+        >
+          <Keyboard size={14} />
         </button>
       </div>
 

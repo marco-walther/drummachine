@@ -26,6 +26,10 @@ npm run build
 | File | **Ctrl+N** new · **Ctrl+O** open · **Ctrl+S** save · **Ctrl+Shift+S** save as · **Ctrl+I** import samples/tracks · Open recent · Recover autosave |
 | Browser | add folders, search · click = listen · double-click = new channel · drag onto the Channel Rack (new channel) or onto a channel (replace its sound) |
 | Explorer | drag audio files straight onto the Channel Rack |
+| Typing keyboard | plays the selected channel like a piano: white keys `A S D F G H J K L ; '`, black keys `W E T Y U O P ]`, **Z/X** octave (toggle with the keyboard button; Enter is never an action key while it's on) |
+| ⏺ Record | arm, press play, and notes you play (keyboard or MIDI) are written into the pattern, snapped to 1/16 |
+| Channel panel (⚙ on a channel) | choose Piano / Synth / Bass / Pad / Pluck, a drum, or your own sample; shape knobs; on-screen keyboard |
+| Samples as instruments | in the Channel panel: **Detect** the root note, choose **Note length** playback, then play the sample at any pitch (e.g. a guitar note) |
 
 Saving copies every sample a project uses into a `samples/` folder next to the `.dmproj` file, so a project folder can be moved or shared as a whole. Unsaved work is autosaved every minute (File → Recover autosave).
 | BPM, mixer # | drag up/down (Shift = fine), double-click to type |
@@ -50,7 +54,7 @@ inversion, and `--accent-user` is a spare hook for your own accent color. Motion
 | 1 | Audio engine, transport, Channel Rack / step sequencer |
 | 2 | Dockable workspace and pop-out panels |
 | 3 | Import your own samples/tracks, sample browser, save/load |
-| 4 | Instruments (synth, keys, pluck, bass, pad, piano, your own multi-samples), MIDI input, computer-keyboard piano (middle row `A`…`Enter` = one chromatic octave), Piano Roll (slides, ghost notes, per-note expression, riff tools) |
+| 4 | Instruments (synth, keys, pluck, bass, pad, piano, your own multi-samples), MIDI input, computer-keyboard piano (piano layout: white keys `A S D F G H J K L ; '`, black keys `W E T Y U O P ]`, Z/X octave), Piano Roll (slides, ghost notes, per-note expression, riff tools) |
 | 5 | Playlist (pattern/audio/automation clips, warping) |
 | 6 | Mixer (inserts, routing, sends, sidechain, FX slots, visual patching) |
 | 7 | Automation clips and internal controllers (LFO, peak) |

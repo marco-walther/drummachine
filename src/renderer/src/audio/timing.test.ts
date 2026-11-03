@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { makeNote } from '@/state/project'
 import { STEP_TICKS } from '@/state/types'
-import { gainToDb, notesInWindow, secondsPerTick, stepInPattern, swingDelayTicks } from './timing'
+import { gainToDb, notesInWindow, quantizeRecorded, secondsPerTick, stepInPattern, swingDelayTicks } from './timing'
 
 describe('timing', () => {
   it('secondsPerTick: a quarter note at 120 bpm is 0.5s', () => {
@@ -28,6 +28,14 @@ describe('timing', () => {
     expect(notesInWindow(notes, 0, STEP_TICKS).map((n) => n.tick)).toEqual([0, 23])
     expect(notesInWindow(notes, 24, STEP_TICKS).map((n) => n.tick)).toEqual([24])
     expect(notesInWindow(undefined, 0, 24)).toEqual([])
+  })
+
+  it('quantizeRecorded snaps start and length to 1/16 steps', () => {
+    const len = 16 * STEP_TICKS
+    expect(quantizeRecorded(25, 30, len)).toEqual({ tick: 24, length: 24 }) // slightly late, ~1 step
+    expect(quantizeRecorded(37, 5, len)).toEqual({ tick: 48, length: 24 }) // rounds up; minimum one step
+    expect(quantizeRecorded(len - 3, 50, len)).toEqual({ tick: 0, length: 48 }) // wraps to the start
+    expect(quantizeRecorded(0, 10_000, len)).toEqual({ tick: 0, length: len }) // capped at pattern length
   })
 
   it('gainToDb', () => {

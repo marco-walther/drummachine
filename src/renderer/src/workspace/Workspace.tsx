@@ -10,6 +10,7 @@ import { ArrowDownToLine, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff }
 import { cn } from '@/lib/utils'
 import { Browser } from '@/panels/Browser'
 import { ChannelRack } from '@/panels/ChannelRack'
+import { ChannelSettings } from '@/panels/ChannelSettings'
 import { Placeholder } from '@/panels/Placeholder'
 import { dockBack, popOut, restoreLayout, scheduleSave, useWorkspace, type PanelId } from './layout'
 import { registerWindow } from './windows'
@@ -25,6 +26,7 @@ const components: Record<PanelId, React.FunctionComponent<IDockviewPanelProps>> 
     <Placeholder phase={5} title="Playlist" text="Arrange patterns, audio clips and automation on free tracks." />
   ),
   browser: () => <Browser />,
+  channel: () => <ChannelSettings />,
   mixer: () => <Placeholder phase={6} title="Mixer" text="Inserts, routing cables, sends, sidechain and effect slots." />
 }
 

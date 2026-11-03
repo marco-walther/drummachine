@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { PROJECT_FORMAT, type ProjectDoc } from '@shared/api'
 import { fromDoc, toDoc } from './persistence'
-import { initialProject, makeChannel, makeNote } from './project'
+import { initialProject, instrumentSource, makeChannel, makeNote, sampleSource } from './project'
 import { STEP_TICKS, type ProjectData } from './types'
 
 function sampleProject(): ProjectData {
   const p = initialProject()
-  const sampleCh = makeChannel({ type: 'sample', sampleId: 's1' }, 'My kick')
+  const sampleCh = makeChannel(sampleSource('s1', { root: 57, oneShot: false, release: 0.3 }), 'My kick')
+  p.channels.push(makeChannel(instrumentSource('bass')))
   p.channels.push(sampleCh)
   p.samples = {
     s1: { id: 's1', name: 'My kick', path: 'C:\\samples\\kick.wav' },
@@ -81,13 +82,30 @@ describe('fromDoc is defensive', () => {
     expect(p.currentPatternId).toBe('p')
   })
 
+  it('instrument params are clamped and defaulted', () => {
+    const p = fromDoc(
+      doc({ channels: [{ id: 'i', name: 'Keys', source: { type: 'instrument', kind: 'piano', params: { attack: -1, brightness: 9 } } }] })
+    )
+    const src = p.channels[0].source
+    expect(src.type === 'instrument' && src.params).toEqual({ attack: 0.001, release: 1.2, brightness: 1, glide: 0 })
+  })
+
+  it('Phase 3 sample channels (no root/oneShot) load as one-shot at C5', () => {
+    const p = fromDoc(
+      doc({ channels: [{ id: 'x', name: 'Old', source: { type: 'sample', sampleId: 's' } }] }, [
+        { id: 's', name: 'Old', absPath: '/a.wav', relPath: null }
+      ])
+    )
+    expect(p.channels[0].source).toEqual({ type: 'sample', sampleId: 's', root: 60, oneShot: true, attack: 0, release: 0.08 })
+  })
+
   it('keeps sample channels whose sample entry exists', () => {
     const p = fromDoc(
       doc({ channels: [{ id: 'x', name: 'Loop', source: { type: 'sample', sampleId: 's' } }] }, [
         { id: 's', name: 'Loop', absPath: '/a/loop.wav', relPath: 'samples/loop.wav' }
       ])
     )
-    expect(p.channels[0].source).toEqual({ type: 'sample', sampleId: 's' })
+    expect(p.channels[0].source).toMatchObject({ type: 'sample', sampleId: 's' })
     expect(p.samples.s.path).toBe('/a/loop.wav')
   })
 })
