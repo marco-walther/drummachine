@@ -1,10 +1,35 @@
-import { join } from 'node:path'
-import { app, BrowserWindow, nativeTheme, shell } from 'electron'
+import { join, normalize, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, shell } from 'electron'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
+const RENDERER_DIR = join(__dirname, '../renderer')
 
 // A DAW must make sound without waiting for a click on the page.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
+// Production pages are served from app://renderer/… instead of file://, so popout
+// windows (app://renderer/popout.html) are same-origin with the main window.
+// dockview refuses file:// popouts, and same-origin is what lets popouts share the
+// main window's JS context (one store, one audio engine).
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+])
+
+const bg = () => (nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#efefef')
+
+/** Popout BrowserWindows by window.open target name (dockview: `<id>-<group>`). */
+const popouts = new Map<string, BrowserWindow>()
+
+function isPopoutUrl(url: string, opener: string): boolean {
+  try {
+    const u = new URL(url)
+    const o = new URL(opener)
+    return u.origin === o.origin && u.pathname.endsWith('/popout.html')
+  } catch {
+    return false
+  }
+}
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -13,7 +38,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#efefef',
+    backgroundColor: bg(),
     title: 'Drummachine',
     autoHideMenuBar: true,
     webPreferences: {
@@ -37,19 +62,20 @@ function createMainWindow(): BrowserWindow {
     })
   }
 
-  // Pop-out panels (Phase 2) open via window.open from the renderer and share its
-  // JS context. Anything else (external links) goes to the system browser.
+  // Popout panels: same-origin popout.html only. dockview passes the position
+  // and size as window features, which Electron applies.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url === 'about:blank' || url.startsWith('about:blank')) {
+    if (isPopoutUrl(url, win.webContents.getURL())) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
-          width: 900,
-          height: 420,
-          minWidth: 420,
-          minHeight: 220,
+          // children inherit the main window's options; it starts hidden (show:false)
+          show: true,
+          title: 'Drummachine',
+          minWidth: 360,
+          minHeight: 200,
           autoHideMenuBar: true,
-          backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#efefef',
+          backgroundColor: bg(),
           webPreferences: { backgroundThrottling: false }
         }
       }
@@ -58,15 +84,41 @@ function createMainWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
+  win.webContents.on('did-create-window', (child, { frameName }) => {
+    popouts.set(frameName, child)
+    child.on('closed', () => {
+      if (popouts.get(frameName) === child) popouts.delete(frameName)
+    })
+  })
+
+  // Closing the main window closes its popouts too.
+  win.on('closed', () => {
+    for (const child of popouts.values()) if (!child.isDestroyed()) child.close()
+  })
+
   if (isDev) {
     void win.loadURL(process.env['ELECTRON_RENDERER_URL']!)
   } else {
-    void win.loadFile(join(__dirname, '../renderer/index.html'))
+    void win.loadURL('app://renderer/index.html')
   }
   return win
 }
 
+ipcMain.on('popout:set-on-top', (_e, frameName: unknown, onTop: unknown) => {
+  if (typeof frameName !== 'string') return
+  popouts.get(frameName)?.setAlwaysOnTop(onTop === true, 'floating')
+})
+
 app.whenReady().then(() => {
+  protocol.handle('app', (request) => {
+    const { host, pathname } = new URL(request.url)
+    const file = normalize(join(RENDERER_DIR, decodeURIComponent(pathname)))
+    if (host !== 'renderer' || !file.startsWith(RENDERER_DIR + sep)) {
+      return new Response('Not found', { status: 404 })
+    }
+    return net.fetch(pathToFileURL(file).toString())
+  })
+
   createMainWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()

@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import './theme.css';
 @import './motion.css';
+@import 'dockview-react/dist/styles/dockview.css';
+@import './dockview-ink.css';
 
 @custom-variant dark (&:is(.dark *));
 

@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { notesInStep, PRESET_NAMES, selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
 import type { Channel, DrumPreset, Note } from '@/state/types'
+import { addGlobalListener } from '@/workspace/windows'
 
 const LENGTHS = [16, 32, 64]
 
@@ -36,17 +37,13 @@ export function ChannelRack() {
   const step = useTransportUi((s) => s.step)
   const [dragFrom, setDragFrom] = useState<number | null>(null)
 
-  useEffect(() => {
-    const end = () => (paint = null)
-    window.addEventListener('pointerup', end)
-    return () => window.removeEventListener('pointerup', end)
-  }, [])
+  // pointerup on any window: the rack may live in a popout
+  useEffect(() => addGlobalListener('pointerup', () => (paint = null)), [])
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-paper">
-      {/* header */}
+      {/* toolbar (the panel title lives in the dock tab) */}
       <div className="flex h-9 shrink-0 items-center gap-3 border-b border-line px-3">
-        <span className="font-mono text-[10.5px] tracking-[0.14em] text-muted">CHANNEL RACK</span>
         <div className="flex-1" />
         <div className="flex items-center gap-1.5" title="Swing">
           <span className="text-[11px] text-muted">Swing</span>

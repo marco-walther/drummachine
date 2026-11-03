@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  Empty shell for popped-out panels. dockview opens this (same origin as the main
+  window), copies the app's stylesheets in, and moves the panel's DOM here. The
+  panel's React tree, store and audio engine stay in the main window.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Drummachine</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:"
+    />
+  </head>
+  <body></body>
+</html>

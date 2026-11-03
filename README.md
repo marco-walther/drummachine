@@ -19,7 +19,10 @@ npm run build
 
 | Where | Action |
 | ----- | ------ |
-| Anywhere | **Space** play / stop |
+| Anywhere (also in popouts) | **Space** play / stop · **F5** Playlist · **F6** Channel Rack · **F7** Piano Roll · **F8** Browser · **F9** Mixer |
+| Panel tab bar | ⤢ maximize · ⧉ pop out into its own window (drag it to another monitor) |
+| Popped-out window | 📌 keep on top · ⤓ dock back (or just close the window) |
+| Top bar | **View** reopens closed panels · **Reset** → reset layout, or start from scratch (confirms first) |
 | BPM, mixer # | drag up/down (Shift = fine), double-click to type |
 | Knobs | drag up/down (Shift = fine), wheel, double-click to reset |
 | Step grid | click toggles, drag paints, right-click/drag erases |
@@ -42,7 +45,7 @@ inversion, and `--accent-user` is a spare hook for your own accent color. Motion
 | 1 | Audio engine, transport, Channel Rack / step sequencer |
 | 2 | Dockable workspace and pop-out panels |
 | 3 | Import your own samples/tracks, sample browser, save/load |
-| 4 | Piano Roll (slides, ghost notes, per-note expression, riff tools) |
+| 4 | Instruments (synth, keys, pluck, bass, pad, piano, your own multi-samples), MIDI input, computer-keyboard piano (middle row `A`…`Enter` = one chromatic octave), Piano Roll (slides, ghost notes, per-note expression, riff tools) |
 | 5 | Playlist (pattern/audio/automation clips, warping) |
 | 6 | Mixer (inserts, routing, sends, sidechain, FX slots, visual patching) |
 | 7 | Automation clips and internal controllers (LFO, peak) |

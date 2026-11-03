@@ -10,6 +10,8 @@
  */
 
 :root {
+  color-scheme: light;
+
   /* surfaces */
   --page: #efefef;
   --hatch: rgba(0, 0, 0, 0.06);
@@ -43,6 +45,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --page: #0b0b0b;
   --hatch: rgba(255, 255, 255, 0.05);
   --paper: #121212;

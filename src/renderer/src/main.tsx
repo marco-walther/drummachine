@@ -9,9 +9,11 @@ if (import.meta.env.DEV) {
     import('tone'),
     import('./audio/engine'),
     import('./state/project'),
-    import('./state/transport-ui')
-  ]).then(([Tone, { engine }, { useProject }, { useTransportUi }]) => {
-    Object.assign(window, { __dm: { Tone, engine, useProject, useTransportUi } })
+    import('./state/transport-ui'),
+    import('./workspace/layout'),
+    import('./workspace/windows')
+  ]).then(([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows]) => {
+    Object.assign(window, { __dm: { Tone, engine, useProject, useTransportUi, layout, windows } })
   })
 }
 

@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { engine } from '@/audio/engine'
-import { Brackets } from '@/components/ui/brackets'
 import { TransportBar } from '@/components/TransportBar'
 import { useTheme } from '@/hooks/use-theme'
-import { ChannelRack } from '@/panels/ChannelRack'
+import { SHORTCUTS, showPanel } from '@/workspace/layout'
+import { addGlobalListener } from '@/workspace/windows'
+import { Workspace } from '@/workspace/Workspace'
 
 function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
@@ -15,27 +16,24 @@ export default function App() {
 
   useEffect(() => {
     engine.init()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !isTyping(e.target)) {
+    // Registered on every window, so shortcuts also work inside popped-out panels.
+    return addGlobalListener('keydown', (e) => {
+      if (isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return
+      if (e.code === 'Space') {
         e.preventDefault()
         engine.toggle()
+      } else if (SHORTCUTS[e.key]) {
+        e.preventDefault()
+        showPanel(SHORTCUTS[e.key])
       }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    })
   }, [])
 
   return (
     <div className="flex h-full flex-col">
       <TransportBar theme={theme} setTheme={setTheme} />
-      {/* Phase 2 replaces this with the dockable workspace. */}
-      <main className="hatch min-h-0 flex-1 p-6">
-        <div className="bracket-frame reveal h-full max-h-[460px]" data-active="true">
-          <Brackets />
-          <div className="h-full overflow-hidden border border-line shadow-ink">
-            <ChannelRack />
-          </div>
-        </div>
+      <main className="min-h-0 flex-1 bg-page">
+        <Workspace />
       </main>
     </div>
   )

@@ -1,19 +1,33 @@
 import { useState } from 'react'
-import { ChevronDown, Moon, Play, Square, Sun, SunMoon } from 'lucide-react'
+import { ChevronDown, LayoutPanelTop, Moon, Play, RotateCcw, Square, Sun, SunMoon } from 'lucide-react'
 import { engine } from '@/audio/engine'
 import { DragNumber } from '@/components/DragNumber'
 import { Knob } from '@/components/Knob'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import type { ThemeMode } from '@/hooks/use-theme'
 import { cn } from '@/lib/utils'
 import { selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
+import { PANELS, resetLayout, showPanel, type PanelId } from '@/workspace/layout'
+import { startFromScratch } from '@/workspace/reset'
 
 const NEXT_THEME: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' }
 const THEME_ICON = { auto: SunMoon, light: Sun, dark: Moon }
@@ -53,6 +67,9 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
 
       <div className="flex-1" />
 
+      <ViewMenu />
+      <ResetMenu />
+
       <div className="flex items-center gap-1.5">
         <span className="text-[11px] text-muted">Master</span>
         <Knob
@@ -74,6 +91,76 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
         <ThemeIcon size={15} />
       </button>
     </header>
+  )
+}
+
+const barButton =
+  'flex h-7 items-center gap-1.5 rounded-sm px-2 text-[12px] text-muted hover:bg-card hover:text-ink data-[state=open]:bg-card data-[state=open]:text-ink'
+
+function ViewMenu() {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className={barButton} title="Show panels">
+          <LayoutPanelTop size={14} /> View
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        {(Object.keys(PANELS) as PanelId[]).map((id) => (
+          <DropdownMenuItem key={id} onSelect={() => showPanel(id)}>
+            {PANELS[id].title}
+            <DropdownMenuShortcut>{PANELS[id].shortcut}</DropdownMenuShortcut>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** Full reset: layout only, or everything (with confirmation; there is no undo yet). */
+function ResetMenu() {
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className={barButton} title="Reset">
+            <RotateCcw size={14} /> Reset
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel className="text-[11px] font-normal text-muted">Start over</DropdownMenuLabel>
+          <DropdownMenuItem onSelect={() => resetLayout()}>
+            <div>
+              <div>Reset layout</div>
+              <div className="text-[11px] text-muted">Default panels, close popouts. Keeps your beat.</div>
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setTimeout(() => setConfirming(true), 0)}>
+            <div>
+              <div>Start from scratch…</div>
+              <div className="text-[11px] text-muted">New empty project and default layout.</div>
+            </div>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <AlertDialog open={confirming} onOpenChange={setConfirming}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Start from scratch?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This clears every pattern, channel and setting, and resets the layout. It can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => startFromScratch()}>Clear everything</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 

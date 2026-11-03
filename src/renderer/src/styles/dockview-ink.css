@@ -1,0 +1,78 @@
+/*
+ * dockview theme mapped onto our tokens (theme.css). No colors defined here.
+ * Structural values mirror dockview's built-in themes.
+ */
+.dockview-theme-ink {
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-overlay-z-index: 999;
+  --dv-tab-font-size: inherit;
+  --dv-border-radius: 0px;
+  --dv-tab-margin: 0;
+  --dv-spacing-padding: 0px;
+  --dv-tab-border-radius: 0px;
+  --dv-sash-border-radius: 0px;
+  --dv-dropdown-border-radius: 0px;
+  --dv-tab-close-icon-size: inherit;
+  --dv-floating-group-border: none;
+  --dv-drag-over-border: 1px solid var(--ink);
+  --dv-floating-group-dragging-opacity: 0.5;
+  --dv-floating-titlebar-height: 22px;
+  --dv-floating-titlebar-background-color: var(--card);
+  --dv-floating-titlebar-border-bottom: 1px solid var(--line);
+  --dv-active-sash-transition-duration: 0.1s;
+  --dv-active-sash-transition-delay: 0.3s;
+  --dv-tab-group-chip-padding: 4px 8px;
+  --dv-tab-group-chip-border-radius: 2px;
+  --dv-tab-group-chip-font-size: 11px;
+  --dv-tab-group-line-height: 2px;
+  --dv-tab-group-line-opacity: 0.6;
+
+  /* colors → tokens */
+  --dv-group-view-background-color: var(--paper);
+  --dv-tabs-and-actions-container-background-color: var(--card);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--paper);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--card);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--paper);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--card);
+  --dv-tab-divider-color: var(--line);
+  --dv-activegroup-visiblepanel-tab-color: var(--ink);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--soft);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--faint);
+  --dv-separator-border: var(--line);
+  --dv-paneview-header-border-color: var(--line);
+  --dv-paneview-active-outline-color: var(--ink);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--ink) 10%, transparent);
+  --dv-drag-over-border-color: var(--ink);
+  --dv-edge-dock-indicator-color: var(--ink);
+  --dv-tabs-container-scrollbar-color: var(--line-strong);
+  --dv-icon-hover-background-color: var(--line);
+  --dv-floating-box-shadow: var(--shadow);
+  --dv-floating-border: 1px solid var(--line-strong);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--line-strong);
+  --dv-tab-group-color-grey: var(--muted);
+  --dv-tab-group-color-blue: var(--soft);
+  --dv-tab-group-color-red: var(--soft);
+  --dv-tab-group-color-yellow: var(--soft);
+  --dv-tab-group-color-green: var(--soft);
+  --dv-tab-group-color-pink: var(--soft);
+  --dv-tab-group-color-purple: var(--soft);
+  --dv-tab-group-color-cyan: var(--soft);
+  --dv-tab-group-color-orange: var(--soft);
+
+  font-family: var(--ui-sans);
+  background-color: var(--page);
+}
+
+/* active tab of the focused group: thin ink line on top (ink, not a hue) */
+.dockview-theme-ink .dv-groupview.dv-active-group > .dv-tabs-and-actions-container .dv-tabs-container > .dv-tab.dv-active-tab {
+  box-shadow: inset 0 1.5px 0 var(--ink);
+}
+.dockview-theme-ink .dv-tab {
+  letter-spacing: 0.01em;
+}
+.dockview-theme-ink .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--line);
+}
