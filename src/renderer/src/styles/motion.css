@@ -1,0 +1,77 @@
+/*
+ * Motion + surface utilities ported from the InkOrbit reference.
+ * Colors come from theme.css tokens only.
+ */
+
+/* diagonal hatching for page backgrounds / empty areas */
+.hatch {
+  background-color: var(--page);
+  background-image: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 10px);
+}
+
+/* bracket-corner frame: wrap content, add <Brackets /> inside */
+.bracket-frame {
+  position: relative;
+}
+.bracket {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: var(--bracket);
+  border-style: solid;
+  border-width: 0;
+  pointer-events: none;
+  transition:
+    border-color 0.3s,
+    transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.bracket-tl { top: -5px; left: -5px; border-top-width: 1.5px; border-left-width: 1.5px; }
+.bracket-tr { top: -5px; right: -5px; border-top-width: 1.5px; border-right-width: 1.5px; }
+.bracket-bl { bottom: -5px; left: -5px; border-bottom-width: 1.5px; border-left-width: 1.5px; }
+.bracket-br { bottom: -5px; right: -5px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.bracket-frame:hover > .bracket,
+.bracket-frame[data-active='true'] > .bracket { border-color: var(--ink); }
+.bracket-frame:hover > .bracket-tl { transform: translate(-2px, -2px); }
+.bracket-frame:hover > .bracket-tr { transform: translate(2px, -2px); }
+.bracket-frame:hover > .bracket-bl { transform: translate(-2px, 2px); }
+.bracket-frame:hover > .bracket-br { transform: translate(2px, 2px); }
+
+/* routing cables (mixer patching, Phase 6) */
+.cable {
+  stroke: var(--line-strong);
+  fill: none;
+  stroke-width: 1.2;
+  transition: stroke 0.3s;
+}
+.cable-on { stroke: var(--ink); }
+.cable-flow {
+  stroke-dasharray: 3 4;
+  animation: ink-dash 1.2s linear infinite;
+}
+
+/* fade/slide in on mount */
+.reveal {
+  animation: ink-reveal 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* pulsing glow (playhead, live indicators) */
+.glow {
+  animation: ink-pulse 2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes ink-dash { to { stroke-dashoffset: -14; } }
+@keyframes ink-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(1.35); }
+}
+@keyframes ink-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cable-flow, .glow, .reveal { animation: none; }
+  .bracket { transition: none; }
+}
