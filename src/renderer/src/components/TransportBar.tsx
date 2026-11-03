@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, LayoutPanelTop, Moon, Play, RotateCcw, Square, Sun, SunMoon } from 'lucide-react'
 import { engine } from '@/audio/engine'
 import { DragNumber } from '@/components/DragNumber'
+import { FileMenu, ProjectName } from '@/components/FileMenu'
 import { Knob } from '@/components/Knob'
 import {
   AlertDialog,
@@ -43,6 +44,7 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
   return (
     <header className="flex h-11 shrink-0 items-center gap-4 border-b border-line bg-paper px-3">
       <span className="font-mono text-[11px] tracking-[0.14em] text-soft">DRUMMACHINE</span>
+      <FileMenu className={barButton} />
 
       <div className="flex items-center gap-1">
         <button
@@ -65,6 +67,8 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
 
       <PatternMenu />
 
+      <div className="flex-1" />
+      <ProjectName />
       <div className="flex-1" />
 
       <ViewMenu />

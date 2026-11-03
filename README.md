@@ -23,6 +23,11 @@ npm run build
 | Panel tab bar | ⤢ maximize · ⧉ pop out into its own window (drag it to another monitor) |
 | Popped-out window | 📌 keep on top · ⤓ dock back (or just close the window) |
 | Top bar | **View** reopens closed panels · **Reset** → reset layout, or start from scratch (confirms first) |
+| File | **Ctrl+N** new · **Ctrl+O** open · **Ctrl+S** save · **Ctrl+Shift+S** save as · **Ctrl+I** import samples/tracks · Open recent · Recover autosave |
+| Browser | add folders, search · click = listen · double-click = new channel · drag onto the Channel Rack (new channel) or onto a channel (replace its sound) |
+| Explorer | drag audio files straight onto the Channel Rack |
+
+Saving copies every sample a project uses into a `samples/` folder next to the `.dmproj` file, so a project folder can be moved or shared as a whole. Unsaved work is autosaved every minute (File → Recover autosave).
 | BPM, mixer # | drag up/down (Shift = fine), double-click to type |
 | Knobs | drag up/down (Shift = fine), wheel, double-click to reset |
 | Step grid | click toggles, drag paints, right-click/drag erases |

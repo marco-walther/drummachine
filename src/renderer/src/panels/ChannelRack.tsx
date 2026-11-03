@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { AudioLines, Plus } from 'lucide-react'
 import { engine } from '@/audio/engine'
+import { useSampleStatus } from '@/audio/samples'
 import { DragNumber } from '@/components/DragNumber'
 import { Knob } from '@/components/Knob'
 import {
@@ -20,6 +21,8 @@ import { cn } from '@/lib/utils'
 import { notesInStep, PRESET_NAMES, selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
 import type { Channel, DrumPreset, Note } from '@/state/types'
+import { isSampleDrag, readSampleDrop } from '@/workspace/dnd'
+import { addSampleChannels, importSamples } from '@/workspace/project-actions'
 import { addGlobalListener } from '@/workspace/windows'
 
 const LENGTHS = [16, 32, 64]
@@ -36,6 +39,7 @@ export function ChannelRack() {
   const addChannel = useProject((s) => s.addChannel)
   const step = useTransportUi((s) => s.step)
   const [dragFrom, setDragFrom] = useState<number | null>(null)
+  const [dropping, setDropping] = useState(false)
 
   // pointerup on any window: the rack may live in a popout
   useEffect(() => addGlobalListener('pointerup', () => (paint = null)), [])
@@ -71,8 +75,29 @@ export function ChannelRack() {
         </div>
       </div>
 
-      {/* rows */}
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
+      {/* rows: dropping samples here adds channels */}
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-auto px-3 py-2 transition-[outline-color]',
+          'outline-1 -outline-offset-4 outline-transparent outline-dashed',
+          dropping && 'outline-ink'
+        )}
+        onDragOver={(e) => {
+          if (!isSampleDrag(e)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+          setDropping(true)
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false)
+        }}
+        onDrop={(e) => {
+          setDropping(false)
+          if (!isSampleDrag(e)) return
+          e.preventDefault()
+          addSampleChannels(readSampleDrop(e))
+        }}
+      >
         <div className="inline-flex min-w-full flex-col gap-1">
           <StepRuler length={pattern.lengthSteps} step={step} />
           {channels.map((ch, i) => (
@@ -99,7 +124,7 @@ export function ChannelRack() {
                   {PRESET_NAMES[p]}
                 </DropdownMenuItem>
               ))}
-              <DropdownMenuItem disabled>Your sample… (Phase 3)</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void importSamples()}>Your sample or track…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -165,22 +190,48 @@ const ChannelRow = memo(function ChannelRow({
   setDragFrom
 }: RowProps) {
   const selected = useProject((s) => s.selectedChannelId === ch.id)
-  const { updateChannel, toggleSolo, selectChannel, setStep, removeChannel, clearChannel, fillEvery, moveChannel } =
-    useProject.getState()
+  const {
+    updateChannel,
+    toggleSolo,
+    selectChannel,
+    setStep,
+    removeChannel,
+    clearChannel,
+    fillEvery,
+    moveChannel,
+    setChannelSample
+  } = useProject.getState()
   const [renaming, setRenaming] = useState(false)
   const [dropHover, setDropHover] = useState(false)
+  const sample = useProject((s) => (ch.source.type === 'sample' ? s.samples[ch.source.sampleId] : undefined))
+  const missing = useSampleStatus((s) => (ch.source.type === 'sample' ? s[ch.source.sampleId] === 'missing' : false))
 
   return (
     <div
       className={cn('flex items-center gap-2', dropHover && dragFrom !== index && 'outline outline-1 outline-ink')}
       onDragOver={(e) => {
+        // a sample dropped on a row replaces that channel's sound; a channel dragged here reorders
+        if (isSampleDrag(e)) {
+          e.preventDefault()
+          e.stopPropagation()
+          e.dataTransfer.dropEffect = 'copy'
+          setDropHover(true)
+          return
+        }
         if (dragFrom === null) return
         e.preventDefault()
         setDropHover(true)
       }}
       onDragLeave={() => setDropHover(false)}
-      onDrop={() => {
+      onDrop={(e) => {
         setDropHover(false)
+        if (isSampleDrag(e)) {
+          e.preventDefault()
+          e.stopPropagation()
+          const [first] = readSampleDrop(e)
+          if (first) setChannelSample(ch.id, first.path, first.name)
+          return
+        }
         if (dragFrom !== null) moveChannel(dragFrom, index)
         setDragFrom(null)
       }}
@@ -263,17 +314,23 @@ const ChannelRow = memo(function ChannelRow({
                 onDragStart={() => setDragFrom(index)}
                 onDragEnd={() => setDragFrom(null)}
                 className={cn(
-                  'h-7 min-w-0 flex-1 truncate rounded-sm border px-2 text-left text-[12px] transition-colors',
+                  'flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-sm border px-2 text-left text-[12px] transition-colors',
                   selected ? 'border-ink bg-raise text-ink' : 'border-line bg-card text-soft hover:border-line-strong'
                 )}
-                title="Click: select & preview · Double-click: rename · Drag: reorder"
+                title={
+                  (missing ? `Sample file not found: ${sample?.path}\nDrop a sample on this channel to replace it.\n` : '') +
+                  (sample && !missing ? `${sample.path}\n` : '') +
+                  'Click: select & preview · Double-click: rename · Drag: reorder · Drop a sample: replace'
+                }
                 onClick={() => {
                   selectChannel(ch.id)
                   void engine.preview(ch.id)
                 }}
                 onDoubleClick={() => setRenaming(true)}
               >
-                {ch.name}
+                {ch.source.type === 'sample' && <AudioLines size={12} className="shrink-0 text-faint" />}
+                <span className={cn('truncate', missing && 'text-faint line-through')}>{ch.name}</span>
+                {missing && <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">missing</span>}
               </button>
             )}
           </ContextMenuTrigger>

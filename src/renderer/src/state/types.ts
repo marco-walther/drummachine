@@ -54,7 +54,17 @@ export interface Pattern {
   notes: Record<string, Note[]>
 }
 
+/** A user audio file used by the project (sample or track). */
+export interface SampleRef {
+  id: string
+  name: string
+  /** absolute path on disk */
+  path: string
+}
+
 export interface ProjectData {
+  /** samples by id, referenced by channels with source.type === 'sample' */
+  samples: Record<string, SampleRef>
   bpm: number
   /** 0..1 */
   swing: number

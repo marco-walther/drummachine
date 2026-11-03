@@ -8,6 +8,7 @@ import {
 } from 'dockview-react'
 import { ArrowDownToLine, Maximize2, Minimize2, PictureInPicture2, Pin, PinOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Browser } from '@/panels/Browser'
 import { ChannelRack } from '@/panels/ChannelRack'
 import { Placeholder } from '@/panels/Placeholder'
 import { dockBack, popOut, restoreLayout, scheduleSave, useWorkspace, type PanelId } from './layout'
@@ -23,9 +24,7 @@ const components: Record<PanelId, React.FunctionComponent<IDockviewPanelProps>> 
   playlist: () => (
     <Placeholder phase={5} title="Playlist" text="Arrange patterns, audio clips and automation on free tracks." />
   ),
-  browser: () => (
-    <Placeholder phase={3} title="Browser" text="Your sample folders. Drag sounds into the Channel Rack or Playlist." />
-  ),
+  browser: () => <Browser />,
   mixer: () => <Placeholder phase={6} title="Mixer" text="Inserts, routing cables, sends, sidechain and effect slots." />
 }
 

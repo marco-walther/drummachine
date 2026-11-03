@@ -1,6 +1,8 @@
 import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell } from 'electron'
+import { registerFileIpc } from './files'
+import { projectState, registerProjectIpc } from './project'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 const RENDERER_DIR = join(__dirname, '../renderer')
@@ -53,6 +55,41 @@ function createMainWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => win.show())
 
+  // Never navigate away from the app (e.g. a file dropped outside a drop zone).
+  const guard = (wc: Electron.WebContents) =>
+    wc.on('will-navigate', (e, url) => {
+      if (url !== wc.getURL()) e.preventDefault()
+    })
+  guard(win.webContents)
+
+  // Unsaved changes: ask before closing. "Save" lets the renderer save, then it
+  // calls back with project:quit-now.
+  let forceClose = false
+  win.on('close', (e) => {
+    if (forceClose || !projectState.dirty) return
+    e.preventDefault()
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'warning',
+      buttons: ['Save', "Don't save", 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+      title: 'Drummachine',
+      message: `Save changes to "${projectState.name}"?`,
+      detail: "Your changes will be lost if you don't save them."
+    })
+    if (choice === 0) win.webContents.send('project:save-before-quit')
+    else if (choice === 1) {
+      forceClose = true
+      win.close()
+    }
+  })
+  ipcMain.removeAllListeners('project:quit-now')
+  ipcMain.on('project:quit-now', () => {
+    forceClose = true
+    win.close()
+  })
+
   if (isDev) {
     // Surface renderer warnings/errors in the terminal during development.
     win.webContents.on('console-message', (e) => {
@@ -85,6 +122,7 @@ function createMainWindow(): BrowserWindow {
   })
 
   win.webContents.on('did-create-window', (child, { frameName }) => {
+    guard(child.webContents)
     popouts.set(frameName, child)
     child.on('closed', () => {
       if (popouts.get(frameName) === child) popouts.delete(frameName)
@@ -110,6 +148,11 @@ ipcMain.on('popout:set-on-top', (_e, frameName: unknown, onTop: unknown) => {
 })
 
 app.whenReady().then(() => {
+  registerFileIpc()
+  registerProjectIpc()
+  // The default menu's Ctrl+R / Ctrl+W would reload or close and lose work.
+  if (!isDev) Menu.setApplicationMenu(null)
+
   protocol.handle('app', (request) => {
     const { host, pathname } = new URL(request.url)
     const file = normalize(join(RENDERER_DIR, decodeURIComponent(pathname)))

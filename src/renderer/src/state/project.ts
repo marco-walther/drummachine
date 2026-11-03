@@ -69,6 +69,7 @@ export function initialProject(): ProjectData {
   )
   const pattern = makePattern('Pattern 1')
   return {
+    samples: {},
     bpm: 130,
     swing: 0,
     masterVolume: 0.8,
@@ -84,6 +85,15 @@ export interface ProjectActions {
   setBpm(bpm: number): void
   setSwing(swing: number): void
   setMasterVolume(v: number): void
+  // samples
+  /** Register a file (reusing the existing entry for the same path). Returns its id. */
+  addSample(path: string, name: string): string
+  /** New channel playing the file. Returns the channel id. */
+  addSampleChannel(path: string, name: string): string
+  /** Swap the sound of an existing channel for the file (FL: drop onto a channel). */
+  setChannelSample(channelId: string, path: string, name: string): void
+  /** Point a sample at a new location (after saving into the project folder). */
+  relinkSamples(paths: Record<string, string>): void
   // channels
   addChannel(source: ChannelSource, name?: string): string
   removeChannel(id: string): void
@@ -119,6 +129,31 @@ export const useProject = create<ProjectStore>()(
       setBpm: (bpm) => set((s) => void (s.bpm = clamp(Math.round(bpm * 10) / 10, 20, 400))),
       setSwing: (swing) => set((s) => void (s.swing = clamp(swing, 0, 1))),
       setMasterVolume: (v) => set((s) => void (s.masterVolume = clamp(v, 0, 1))),
+
+      addSample: (path, name) => {
+        const existing = Object.values(get().samples).find((s) => s.path === path)
+        if (existing) return existing.id
+        const id = uid()
+        set((s) => void (s.samples[id] = { id, name, path }))
+        return id
+      },
+      addSampleChannel: (path, name) => {
+        const sampleId = get().addSample(path, name)
+        return get().addChannel({ type: 'sample', sampleId }, name)
+      },
+      setChannelSample: (channelId, path, name) => {
+        const sampleId = get().addSample(path, name)
+        set((s) => {
+          const ch = s.channels.find((c) => c.id === channelId)
+          if (!ch) return
+          ch.source = { type: 'sample', sampleId }
+          ch.name = name
+        })
+      },
+      relinkSamples: (paths) =>
+        set((s) => {
+          for (const [id, path] of Object.entries(paths)) if (s.samples[id]) s.samples[id].path = path
+        }),
 
       addChannel: (source, name) => {
         const ch = makeChannel(source, name)

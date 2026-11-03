@@ -1,0 +1,139 @@
+import { PROJECT_FORMAT, PROJECT_VERSION, type ProjectDoc, type SampleDocEntry } from '@shared/api'
+import { initialProject, makeChannel, makeNote, makePattern, uid } from './project'
+import type { Channel, ChannelSource, DrumPreset, Note, Pattern, ProjectData, SampleRef } from './types'
+
+/**
+ * Project ⇄ file document. Loading is defensive: anything missing or malformed
+ * falls back to defaults rather than failing, except a wrong format/version.
+ */
+
+const PRESETS: DrumPreset[] = ['kick', 'snare', 'clap', 'hat', 'openhat', 'tom']
+
+export function toDoc(state: ProjectData): ProjectDoc {
+  const used = new Set(state.channels.flatMap((c) => (c.source.type === 'sample' ? [c.source.sampleId] : [])))
+  const samples: SampleDocEntry[] = Object.values(state.samples)
+    .filter((s) => used.has(s.id))
+    .map((s) => ({ id: s.id, name: s.name, absPath: s.path, relPath: null }))
+  return {
+    format: PROJECT_FORMAT,
+    version: PROJECT_VERSION,
+    savedAt: new Date().toISOString(),
+    project: {
+      bpm: state.bpm,
+      swing: state.swing,
+      masterVolume: state.masterVolume,
+      channels: state.channels,
+      patterns: state.patterns,
+      currentPatternId: state.currentPatternId
+    },
+    samples
+  }
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const num = (v: unknown, d: number, lo = -Infinity, hi = Infinity) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d
+const str = (v: unknown, d: string) => (typeof v === 'string' && v.length > 0 ? v : d)
+const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
+
+function readSource(v: unknown, samples: Record<string, SampleRef>): ChannelSource | null {
+  if (!isObj(v)) return null
+  if (v.type === 'synth' && PRESETS.includes(v.preset as DrumPreset)) return { type: 'synth', preset: v.preset as DrumPreset }
+  if (v.type === 'sample' && typeof v.sampleId === 'string' && samples[v.sampleId])
+    return { type: 'sample', sampleId: v.sampleId }
+  return null
+}
+
+function readChannel(v: unknown, samples: Record<string, SampleRef>): Channel | null {
+  if (!isObj(v)) return null
+  const source = readSource(v.source, samples)
+  if (!source) return null
+  const base = makeChannel(source)
+  return {
+    id: str(v.id, base.id),
+    name: str(v.name, base.name),
+    source,
+    volume: num(v.volume, base.volume, 0, 1),
+    pan: num(v.pan, 0, -1, 1),
+    pitch: Math.round(num(v.pitch, 0, -24, 24)),
+    muted: bool(v.muted, false),
+    solo: bool(v.solo, false),
+    mixerTarget: Math.round(num(v.mixerTarget, 0, 0, 999))
+  }
+}
+
+function readNote(v: unknown): Note | null {
+  if (!isObj(v) || typeof v.tick !== 'number' || !Number.isFinite(v.tick) || v.tick < 0) return null
+  const d = makeNote(v.tick)
+  return {
+    id: str(v.id, d.id),
+    tick: Math.round(v.tick),
+    length: Math.max(1, Math.round(num(v.length, d.length))),
+    key: Math.round(num(v.key, d.key, 0, 127)),
+    velocity: num(v.velocity, d.velocity, 0, 1),
+    pan: num(v.pan, 0, -1, 1),
+    finePitch: num(v.finePitch, 0, -100, 100),
+    cutoff: num(v.cutoff, 1, 0, 1),
+    slide: bool(v.slide, false)
+  }
+}
+
+function readPattern(v: unknown, channelIds: Set<string>): Pattern | null {
+  if (!isObj(v)) return null
+  const p = makePattern(str(v.name, 'Pattern'))
+  const notes: Record<string, Note[]> = {}
+  if (isObj(v.notes)) {
+    for (const [ch, list] of Object.entries(v.notes)) {
+      if (!channelIds.has(ch) || !Array.isArray(list)) continue // notes of deleted/unknown channels
+      notes[ch] = list.map(readNote).filter((n): n is Note => !!n).sort((a, b) => a.tick - b.tick)
+    }
+  }
+  return {
+    id: str(v.id, p.id),
+    name: p.name,
+    lengthSteps: Math.round(num(v.lengthSteps, 16, 1, 256)),
+    notes
+  }
+}
+
+/** Build project state from a (validated-format) document. Throws only on a non-project. */
+export function fromDoc(doc: ProjectDoc): ProjectData {
+  if (!doc || doc.format !== PROJECT_FORMAT) throw new Error('This is not a Drummachine project.')
+  const raw = isObj(doc.project) ? doc.project : {}
+  const fallback = initialProject()
+
+  const samples: Record<string, SampleRef> = {}
+  for (const s of doc.samples ?? []) {
+    if (isObj(s) && typeof s.id === 'string' && typeof s.absPath === 'string') {
+      samples[s.id] = { id: s.id, name: str(s.name, 'Sample'), path: s.absPath }
+    }
+  }
+
+  const channels: Channel[] = []
+  const seen = new Set<string>()
+  for (const c of Array.isArray(raw.channels) ? raw.channels : []) {
+    const ch = readChannel(c, samples)
+    if (!ch) continue
+    if (seen.has(ch.id)) ch.id = uid()
+    seen.add(ch.id)
+    channels.push(ch)
+  }
+
+  const ids = new Set(channels.map((c) => c.id))
+  let patterns = (Array.isArray(raw.patterns) ? raw.patterns : [])
+    .map((p) => readPattern(p, ids))
+    .filter((p): p is Pattern => !!p)
+  if (patterns.length === 0) patterns = [makePattern('Pattern 1')]
+  const current = typeof raw.currentPatternId === 'string' && patterns.some((p) => p.id === raw.currentPatternId)
+
+  return {
+    samples,
+    bpm: num(raw.bpm, fallback.bpm, 20, 400),
+    swing: num(raw.swing, 0, 0, 1),
+    masterVolume: num(raw.masterVolume, fallback.masterVolume, 0, 1),
+    channels,
+    patterns,
+    currentPatternId: current ? (raw.currentPatternId as string) : patterns[0].id,
+    selectedChannelId: channels[0]?.id ?? null
+  }
+}

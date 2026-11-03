@@ -73,6 +73,30 @@ describe('project store', () => {
     expect(s().channels.map((c) => c.id)).toEqual([ids[1], ids[2], ids[0], ids[3]])
   })
 
+  it('sample channels reuse one sample entry per file', () => {
+    const a = s().addSampleChannel('C:\\s\\kick.wav', 'kick')
+    const b = s().addSampleChannel('C:\\s\\kick.wav', 'kick')
+    const ids = s().channels.filter((c) => c.id === a || c.id === b).map((c) => c.source)
+    expect(ids[0]).toEqual(ids[1])
+    expect(Object.keys(s().samples)).toHaveLength(1)
+  })
+
+  it('setChannelSample replaces a channel sound and name', () => {
+    const kick = s().channels[0].id
+    s().setChannelSample(kick, '/x/boom.wav', 'boom')
+    const ch = s().channels[0]
+    expect(ch.name).toBe('boom')
+    expect(ch.source.type).toBe('sample')
+  })
+
+  it('relinkSamples updates paths', () => {
+    const ch = s().addSampleChannel('/old/a.wav', 'a')
+    const src = s().channels.find((c) => c.id === ch)!.source
+    const id = src.type === 'sample' ? src.sampleId : ''
+    s().relinkSamples({ [id]: '/project/samples/a.wav' })
+    expect(s().samples[id].path).toBe('/project/samples/a.wav')
+  })
+
   it('clamps bpm and channel params', () => {
     s().setBpm(1000)
     expect(s().bpm).toBe(400)

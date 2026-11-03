@@ -11,9 +11,16 @@ if (import.meta.env.DEV) {
     import('./state/project'),
     import('./state/transport-ui'),
     import('./workspace/layout'),
-    import('./workspace/windows')
-  ]).then(([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows]) => {
-    Object.assign(window, { __dm: { Tone, engine, useProject, useTransportUi, layout, windows } })
+    import('./workspace/windows'),
+    import('./workspace/project-actions'),
+    import('./state/file'),
+    import('./state/library'),
+    import('./audio/samples'),
+    import('./state/toasts')
+  ]).then(([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows, actions, file, library, samples, toasts]) => {
+    Object.assign(window, {
+      __dm: { Tone, engine, useProject, useTransportUi, layout, windows, actions, file, library, samples, toasts }
+    })
   })
 }
 

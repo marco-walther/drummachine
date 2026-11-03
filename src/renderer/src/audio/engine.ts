@@ -3,6 +3,7 @@ import { selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
 import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type ProjectData } from '@/state/types'
 import { isSilent } from './mixing'
+import { ensureSamples } from './samples'
 import { gainToDb, notesInWindow, secondsPerTick, stepInPattern, swingDelayTicks } from './timing'
 import { createVoice, sourceKey, type Voice } from './voices'
 
@@ -73,6 +74,7 @@ function sync(state: ProjectData) {
       strips.delete(id)
     }
   }
+  ensureSamples(state.samples)
   const anySolo = state.channels.some((c) => c.solo)
   for (const ch of state.channels) syncChannel(ch, anySolo)
 }
