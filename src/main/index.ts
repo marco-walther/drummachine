@@ -3,6 +3,9 @@ import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 
 const isDev = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
 
+// A DAW must make sound without waiting for a click on the page.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1440,
@@ -16,7 +19,10 @@ function createMainWindow(): BrowserWindow {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
-      contextIsolation: true
+      contextIsolation: true,
+      // The audio engine + UI clock must keep running while this window is
+      // covered (e.g. by a popped-out panel). Throttling would stall the playhead.
+      backgroundThrottling: false
     }
   })
 
@@ -43,7 +49,8 @@ function createMainWindow(): BrowserWindow {
           minWidth: 420,
           minHeight: 220,
           autoHideMenuBar: true,
-          backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#efefef'
+          backgroundColor: nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#efefef',
+          webPreferences: { backgroundThrottling: false }
         }
       }
     }

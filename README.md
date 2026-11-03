@@ -15,6 +15,18 @@ npm test
 npm run build
 ```
 
+## Controls
+
+| Where | Action |
+| ----- | ------ |
+| Anywhere | **Space** play / stop |
+| BPM, mixer # | drag up/down (Shift = fine), double-click to type |
+| Knobs | drag up/down (Shift = fine), wheel, double-click to reset |
+| Step grid | click toggles, drag paints, right-click/drag erases |
+| Channel LED | click mutes, right-click solos |
+| Channel name | click selects + previews, double-click renames, drag to reorder, right-click for menu (fill, clear, delete…) |
+| Pattern menu | new / clone / rename / delete; double-click the name to rename |
+
 ## Theme
 
 All colors live in [`src/renderer/src/styles/theme.css`](src/renderer/src/styles/theme.css)

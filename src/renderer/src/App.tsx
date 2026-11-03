@@ -1,34 +1,39 @@
-import { Moon, Sun, SunMoon } from 'lucide-react'
+import { useEffect } from 'react'
+import { engine } from '@/audio/engine'
 import { Brackets } from '@/components/ui/brackets'
-import { useTheme, type ThemeMode } from '@/hooks/use-theme'
+import { TransportBar } from '@/components/TransportBar'
+import { useTheme } from '@/hooks/use-theme'
+import { ChannelRack } from '@/panels/ChannelRack'
 
-const NEXT: Record<ThemeMode, ThemeMode> = { auto: 'light', light: 'dark', dark: 'auto' }
-const ICON = { auto: SunMoon, light: Sun, dark: Moon }
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+}
 
 export default function App() {
-  const [mode, setMode] = useTheme()
-  const ThemeIcon = ICON[mode]
+  const [theme, setTheme] = useTheme()
+
+  useEffect(() => {
+    engine.init()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !isTyping(e.target)) {
+        e.preventDefault()
+        engine.toggle()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-paper px-3">
-        <span className="font-mono text-[11px] tracking-[0.14em] text-soft">DRUMMACHINE</span>
-        <div className="flex-1" />
-        <button
-          className="grid size-7 place-items-center rounded-sm text-muted hover:bg-card hover:text-ink"
-          onClick={() => setMode(NEXT[mode])}
-          title={`Theme: ${mode}`}
-        >
-          <ThemeIcon size={15} />
-        </button>
-      </header>
-
-      <main className="hatch grid flex-1 place-items-center p-6">
-        <div className="bracket-frame reveal">
+      <TransportBar theme={theme} setTheme={setTheme} />
+      {/* Phase 2 replaces this with the dockable workspace. */}
+      <main className="hatch min-h-0 flex-1 p-6">
+        <div className="bracket-frame reveal h-full max-h-[460px]" data-active="true">
           <Brackets />
-          <div className="border border-line bg-paper px-10 py-8 text-center shadow-ink">
-            <p className="font-mono text-[11px] text-faint">PHASE 0</p>
-            <p className="mt-1 text-soft">Workspace scaffold. The Channel Rack lands in Phase 1.</p>
+          <div className="h-full overflow-hidden border border-line shadow-ink">
+            <ChannelRack />
           </div>
         </div>
       </main>
