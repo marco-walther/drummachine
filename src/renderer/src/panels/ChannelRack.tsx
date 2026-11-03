@@ -355,6 +355,23 @@ const ChannelRow = memo(function ChannelRow({
             )}
           </ContextMenuTrigger>
           <ContextMenuContent>
+            <ContextMenuItem
+              onSelect={() => {
+                selectChannel(ch.id)
+                showPanel('pianoRoll')
+              }}
+            >
+              Edit in Piano Roll
+            </ContextMenuItem>
+            <ContextMenuItem
+              onSelect={() => {
+                selectChannel(ch.id)
+                showPanel('channel')
+              }}
+            >
+              Channel settings
+            </ContextMenuItem>
+            <ContextMenuSeparator />
             <ContextMenuItem onSelect={() => setRenaming(true)}>Rename</ContextMenuItem>
             <ContextMenuItem onSelect={() => fillEvery(ch.id, 2)}>Fill every 2 steps</ContextMenuItem>
             <ContextMenuItem onSelect={() => fillEvery(ch.id, 4)}>Fill every 4 steps</ContextMenuItem>

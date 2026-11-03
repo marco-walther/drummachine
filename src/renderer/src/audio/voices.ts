@@ -13,6 +13,11 @@ export interface Voice {
   play(time: number, midi: number, velocity: number, duration: number): void
   /** live note (keyboard / MIDI): returns a function that releases it */
   hold(time: number, midi: number, velocity: number): (time: number) => void
+  /**
+   * Slide note: glide the sounding note(s) to `midi` over `duration` instead of
+   * starting a new note. Instruments without pitch (drums) ignore it.
+   */
+  glide(time: number, midi: number, duration: number): void
   /** apply changed settings in place (no rebuild, no dropped notes) */
   update(source: ChannelSource): void
   dispose(): void
@@ -29,6 +34,7 @@ function drum(trigger: (time: number, vel: number, semis: number) => void, outpu
       trigger(time, vel, midi - ROOT_KEY)
       return noop
     },
+    glide: noop,
     update: noop,
     dispose
   }
@@ -125,6 +131,8 @@ export const sampleBuffers = new Map<string, Tone.ToneAudioBuffer>()
 function sampleVoice(initial: SampleSource): Voice {
   let s = initial
   const out = new Tone.Gain(1)
+  /** sources still playing (slides bend them) */
+  const active = new Set<Tone.ToneBufferSource>()
 
   function start(time: number, midi: number, vel: number) {
     const buffer = sampleBuffers.get(s.sampleId)
@@ -134,7 +142,9 @@ function sampleVoice(initial: SampleSource): Voice {
     node.connect(g)
     g.gain.setValueAtTime(0, time)
     g.gain.linearRampToValueAtTime(vel, time + Math.max(0.002, s.attack))
+    active.add(node)
     node.onended = () => {
+      active.delete(node)
       node.dispose()
       g.dispose()
     }
@@ -158,6 +168,10 @@ function sampleVoice(initial: SampleSource): Voice {
       return (t) => {
         if (stop && !s.oneShot) stop(t)
       }
+    },
+    glide: (time, midi, duration) => {
+      const target = ratio(midi - s.root)
+      for (const node of active) node.playbackRate.exponentialRampTo(target, Math.max(0.005, duration), time)
     },
     update: (src) => {
       if (src.type === 'sample') s = src

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { resetHistory } from './history'
 import { useProject } from './project'
 import type { ProjectData } from './types'
 
@@ -39,8 +40,9 @@ export function withoutTracking(fn: () => void) {
   }
 }
 
-/** Replace the whole project, e.g. New/Open/Recover. */
+/** Replace the whole project, e.g. New/Open/Recover. Undo history starts over. */
 export function replaceProject(data: ProjectData, file: Omit<ProjectFile, 'dirty'>, dirty = false) {
   withoutTracking(() => useProject.setState(data))
   useProjectFile.setState({ ...file, dirty })
+  resetHistory()
 }

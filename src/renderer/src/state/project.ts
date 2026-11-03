@@ -133,6 +133,8 @@ export interface ProjectActions {
   updateInstrumentParams(channelId: string, patch: Partial<InstrumentParams>): void
   /** Add a note to the current pattern (live recording). */
   addNote(channelId: string, note: Note): void
+  /** Replace a channel's notes in the current pattern (Piano Roll edits); grows the pattern to fit. */
+  setChannelNotes(channelId: string, notes: Note[]): void
   // channels
   addChannel(source: ChannelSource, name?: string): string
   removeChannel(id: string): void
@@ -227,6 +229,16 @@ export const useProject = create<ProjectStore>()(
           const notes = (p.notes[channelId] ??= [])
           notes.push(note)
           notes.sort((a, b) => a.tick - b.tick)
+        }),
+      setChannelNotes: (channelId, notes) =>
+        set((s) => {
+          const p = current(s)
+          if (!s.channels.some((c) => c.id === channelId)) return
+          p.notes[channelId] = [...notes].sort((a, b) => a.tick - b.tick || a.key - b.key)
+          // FL-style: a pattern grows (in whole bars) to hold its notes
+          const end = Math.max(0, ...notes.map((n) => n.tick + n.length))
+          const bar = 16 * STEP_TICKS
+          if (end > p.lengthSteps * STEP_TICKS) p.lengthSteps = Math.min(256, Math.ceil(end / bar) * 16)
         }),
       relinkSamples: (paths) =>
         set((s) => {

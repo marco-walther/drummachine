@@ -7,6 +7,7 @@ import { useTheme } from '@/hooks/use-theme'
 import { handleNoteKeyDown, handleNoteKeyUp, releaseAllKeys, useTypingKeyboard } from '@/input/keyboard'
 import { initMidi } from '@/input/midi'
 import { useProjectFile } from '@/state/file'
+import { redo, undo } from '@/state/history'
 import { SHORTCUTS, showPanel } from '@/workspace/layout'
 import {
   autosaveIfDirty,
@@ -60,6 +61,9 @@ function onKey(e: KeyboardEvent) {
     const run = (fn: () => unknown) => {
       e.preventDefault()
       void fn()
+    }
+    if ((k === 'z' || k === 'y') && !isTyping(e.target)) {
+      return run(() => (k === 'y' || e.shiftKey ? redo() : undo()))
     }
     if (k === 's' && e.shiftKey) return run(saveProjectAs)
     if (k === 's') return run(saveProject)

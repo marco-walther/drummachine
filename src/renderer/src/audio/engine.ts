@@ -2,8 +2,8 @@ import * as Tone from 'tone'
 import { create } from 'zustand'
 import { makeNote, selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
-import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type ProjectData } from '@/state/types'
-import { isSilent } from './mixing'
+import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type Note, type ProjectData } from '@/state/types'
+import { isSilent, noteCutoffHz } from './mixing'
 import { ensureSamples } from './samples'
 import {
   gainToDb,
@@ -26,10 +26,27 @@ import { createVoice, sourceKey, type Voice } from './voices'
 
 interface Strip {
   voice: Voice
+  /** per-note expression stage: voice → filter (note cutoff) → panner (note pan) → channel */
+  filter: Tone.Filter
+  panner: Tone.Panner
+  /** last per-note values scheduled, so unchanged notes schedule nothing */
+  expr: { cutoff: number; pan: number }
   channel: Tone.Channel
   key: string
   /** last values pushed to the audio params (avoid re-scheduling on every state change) */
   applied: { volume: number; pan: number; silent: boolean }
+}
+
+/** Apply a note's pan and cutoff at its start (the stage is per channel). */
+function applyExpression(strip: Strip, note: Note, time: number) {
+  if (note.cutoff !== strip.expr.cutoff) {
+    strip.filter.frequency.setValueAtTime(noteCutoffHz(note.cutoff), time)
+    strip.expr.cutoff = note.cutoff
+  }
+  if (note.pan !== strip.expr.pan) {
+    strip.panner.pan.setValueAtTime(note.pan, time)
+    strip.expr.pan = note.pan
+  }
 }
 
 const strips = new Map<string, Strip>()
@@ -46,15 +63,17 @@ function syncChannel(ch: Channel, anySolo: boolean) {
   if (strip && strip.key !== key) {
     strip.voice.dispose()
     strip.voice = createVoice(ch.source)
-    strip.voice.output.connect(strip.channel)
+    strip.voice.output.connect(strip.filter)
     strip.key = key
   }
   if (!strip) {
     // Mixer routing (ch.mixerTarget) is applied in Phase 6; until then → master.
     const channel = new Tone.Channel().toDestination()
+    const panner = new Tone.Panner(0).connect(channel)
+    const filter = new Tone.Filter({ type: 'lowpass', frequency: noteCutoffHz(1), rolloff: -12 }).connect(panner)
     const voice = createVoice(ch.source)
-    voice.output.connect(channel)
-    strip = { voice, channel, key, applied: { volume: NaN, pan: NaN, silent: false } }
+    voice.output.connect(filter)
+    strip = { voice, filter, panner, expr: { cutoff: 1, pan: 0 }, channel, key, applied: { volume: NaN, pan: NaN, silent: false } }
     strips.set(ch.id, strip)
   } else {
     strip.voice.update(ch.source)
@@ -80,6 +99,8 @@ function sync(state: ProjectData) {
   for (const [id, strip] of strips) {
     if (!ids.has(id)) {
       strip.voice.dispose()
+      strip.filter.dispose()
+      strip.panner.dispose()
       strip.channel.dispose()
       strips.delete(id)
     }
@@ -101,8 +122,11 @@ function tick(time: number) {
     if (!strip) continue
     for (const note of notesInWindow(pattern.notes[ch.id], windowStart, STEP_TICKS)) {
       const offset = note.tick - windowStart + swingDelayTicks(note.tick, state.swing)
+      const at = time + offset * spt
       const pitch = note.key + ch.pitch + note.finePitch / 100
-      strip.voice.play(time + offset * spt, pitch, note.velocity, note.length * spt)
+      applyExpression(strip, note, at)
+      if (note.slide) strip.voice.glide(at, pitch, note.length * spt)
+      else strip.voice.play(at, pitch, note.velocity, note.length * spt)
     }
   }
 

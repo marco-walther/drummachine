@@ -29,6 +29,8 @@ npm run build
 | Typing keyboard | plays the selected channel like a piano: white keys `A S D F G H J K L ; '`, black keys `W E T Y U O P ]`, **Z/X** octave (toggle with the keyboard button; Enter is never an action key while it's on) |
 | ⏺ Record | arm, press play, and notes you play (keyboard or MIDI) are written into the pattern, snapped to 1/16 |
 | Channel panel (⚙ on a channel) | choose Piano / Synth / Bass / Pad / Pluck, a drum, or your own sample; shape knobs; on-screen keyboard |
+| Piano Roll (F7, or right-click a channel) | click = note (drag sets length), drag = move, drag right edge = resize, right-click/drag = delete, Ctrl+drag = box select; Delete, Ctrl+A, arrows (Shift = octave/bar). Toolbar: snap, chord stamp, slide notes, ghost notes, Tools (quantize, chop, strum, arpeggiate, legato, transpose). Bottom lane edits velocity / pan / fine pitch / cutoff per note |
+| Undo / redo | **Ctrl+Z** / **Ctrl+Y** (or Ctrl+Shift+Z); drags and knob turns count as one step |
 | Samples as instruments | in the Channel panel: **Detect** the root note, choose **Note length** playback, then play the sample at any pitch (e.g. a guitar note) |
 
 Saving copies every sample a project uses into a `samples/` folder next to the `.dmproj` file, so a project folder can be moved or shared as a whole. Unsaved work is autosaved every minute (File → Recover autosave).

@@ -52,16 +52,37 @@ function bassOptions(p: InstrumentParams) {
   }
 }
 
+/** PolySynth keeps its voices private; slides need their detune. */
+type DetunableVoice = { detune: Tone.Signal<'cents'> }
+const voicesOf = (synth: Tone.PolySynth) => (synth as unknown as { _voices: DetunableVoice[] })._voices ?? []
+
 /** Shared shape for PolySynth-based instruments. */
 function polyVoice(synth: Tone.PolySynth, out: Tone.Gain, options: (p: InstrumentParams) => object, initial: InstrumentParams): Voice {
   let params = initial
+  let lastMidi: number | null = null
+  // a normal note ends any slide bend
+  const unbend = (time: number) => {
+    for (const v of voicesOf(synth)) v.detune.setValueAtTime(0, time)
+  }
   return {
     output: out,
-    play: (time, midi, vel, duration) => synth.triggerAttackRelease(midiToHz(midi), duration, time, vel),
+    play: (time, midi, vel, duration) => {
+      unbend(time)
+      lastMidi = midi
+      synth.triggerAttackRelease(midiToHz(midi), duration, time, vel)
+    },
     hold: (time, midi, vel) => {
+      unbend(time)
+      lastMidi = midi
       const hz = midiToHz(midi)
       synth.triggerAttack(hz, time, vel)
       return (t) => synth.triggerRelease(hz, t)
+    },
+    glide: (time, midi, duration) => {
+      if (lastMidi === null) return
+      // bend everything that is sounding by the interval from the last note
+      const cents = (midi - lastMidi) * 100
+      for (const v of voicesOf(synth)) v.detune.linearRampTo(cents, Math.max(0.005, duration), time)
     },
     update: (src: ChannelSource) => {
       if (src.type !== 'instrument' || src.params === params) return
@@ -101,6 +122,7 @@ function bassVoice(initial: InstrumentParams): Voice {
         if (current === id) synth.triggerRelease(at(t))
       }
     },
+    glide: (time, midi, duration) => synth.frequency.exponentialRampTo(midiToHz(midi), Math.max(0.005, duration), time),
     update: (src) => {
       if (src.type !== 'instrument' || src.params === params) return
       params = src.params
@@ -137,8 +159,10 @@ function pluckVoice(initial: InstrumentParams): Voice {
     return { g, s, at: monotonic() }
   })
   let next = 0
+  let last: (typeof pool)[number] | null = null
   const pluck = (time: number, midi: number, vel: number) => {
     const v = pool[next]
+    last = v
     next = (next + 1) % pool.length
     const t = v.at(time)
     const hz = midiToHz(midi)
@@ -164,6 +188,13 @@ function pluckVoice(initial: InstrumentParams): Voice {
     hold: (time, midi, vel) => {
       const v = pluck(time, midi, vel)
       return (t) => v.s.triggerRelease(t)
+    },
+    glide: (time, midi, duration) => {
+      // bend the ringing string by changing its comb-filter delay (period = 1/f)
+      const comb = last && (last.s as unknown as { _lfcf?: { delayTime: Tone.Param<'time'> } })._lfcf
+      if (!comb) return
+      const sr = last!.s.context.sampleRate
+      comb.delayTime.exponentialRampTo(Math.max(1 / midiToHz(midi) - 0.83 / sr, 2 / sr), Math.max(0.005, duration), time)
     },
     update: (src) => {
       if (src.type !== 'instrument' || src.params === params) return

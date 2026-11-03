@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { useProjectFile } from '@/state/file'
+import { redo, undo } from '@/state/history'
 import {
   importSamples,
   newProject,
@@ -59,6 +60,15 @@ export function FileMenu({ className }: { className: string }) {
             ))}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => undo()}>
+          Undo
+          <DropdownMenuShortcut>Ctrl+Z</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => redo()}>
+          Redo
+          <DropdownMenuShortcut>Ctrl+Y</DropdownMenuShortcut>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void saveProject()}>
           Save

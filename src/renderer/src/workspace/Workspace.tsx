@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { Browser } from '@/panels/Browser'
 import { ChannelRack } from '@/panels/ChannelRack'
 import { ChannelSettings } from '@/panels/ChannelSettings'
+import { PianoRoll } from '@/panels/piano-roll/PianoRoll'
 import { Placeholder } from '@/panels/Placeholder'
 import { dockBack, popOut, restoreLayout, scheduleSave, useWorkspace, type PanelId } from './layout'
 import { registerWindow } from './windows'
@@ -19,9 +20,7 @@ const themeInk: DockviewTheme = { name: 'ink', className: 'dockview-theme-ink' }
 
 const components: Record<PanelId, React.FunctionComponent<IDockviewPanelProps>> = {
   channelRack: () => <ChannelRack />,
-  pianoRoll: () => (
-    <Placeholder phase={4} title="Piano Roll" text="Melodic instruments, slide notes, ghost notes and riff tools." />
-  ),
+  pianoRoll: () => <PianoRoll />,
   playlist: () => (
     <Placeholder phase={5} title="Playlist" text="Arrange patterns, audio clips and automation on free tracks." />
   ),
