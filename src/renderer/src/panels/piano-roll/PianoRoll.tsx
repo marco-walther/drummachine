@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Ghost, MousePointer2, Pencil, TrendingUp, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
+import { Ghost, ListPlus, MousePointer2, Pencil, TrendingUp, Wand2, ZoomIn, ZoomOut } from 'lucide-react'
+import { captureToPianoRoll } from './capture-action'
 import { engine, useHeldKeys } from '@/audio/engine'
 import {
   DropdownMenu,
@@ -277,6 +278,14 @@ function Toolbar({ channel }: { channel: Channel }) {
           <DropdownMenuItem onSelect={() => applyTool(channel.id, () => [])}>Delete</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <button
+        className={cn(menuButton, 'border border-line')}
+        title="Add what you just played on the keyboard / MIDI to this Piano Roll"
+        onClick={() => captureToPianoRoll(channel.id)}
+      >
+        <ListPlus size={14} /> Capture played
+      </button>
 
       <div className="flex-1" />
       <ToolButton label="Zoom out (Ctrl+wheel)" onClick={() => usePianoRollUi.setState({ zoom: Math.max(0.25, ui.zoom / 1.25) })}>

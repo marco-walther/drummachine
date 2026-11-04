@@ -90,9 +90,48 @@ export interface SampleRef {
   path: string
 }
 
+/** A Playlist lane. Tracks are not tied to an instrument: any clip can go anywhere. */
+export interface PlaylistTrack {
+  id: string
+  name: string
+  muted: boolean
+}
+
+export interface Clip {
+  id: string
+  trackId: string
+  /** position on the timeline, ticks */
+  start: number
+  /** visible length, ticks */
+  length: number
+  kind: 'pattern' | 'audio'
+  /** pattern clips: which pattern (loops if the clip is longer) */
+  patternId?: string
+  /** pattern clips: ticks into the pattern where the clip begins (left trim) */
+  offset: number
+  /** audio clips: which sample/track file */
+  sampleId?: string
+  /** audio clips: seconds into the file where the clip begins (left trim) */
+  sourceOffset: number
+  /** audio clips: 0..1 */
+  gain: number
+  /** audio clips: semitones */
+  pitch: number
+  /** audio clips: playback speed (1 = original) */
+  rate: number
+  /** audio clips: true = time-stretch (speed independent of pitch); false = resample (speed changes pitch) */
+  stretch: boolean
+}
+
 export interface ProjectData {
-  /** samples by id, referenced by channels with source.type === 'sample' */
+  /** samples by id, referenced by sample channels and audio clips */
   samples: Record<string, SampleRef>
+  tracks: PlaylistTrack[]
+  clips: Clip[]
+  /** false = loop the current pattern (PAT), true = play the Playlist (SONG) */
+  songMode: boolean
+  /** song loop region in ticks, or null */
+  loop: { start: number; end: number } | null
   bpm: number
   /** 0..1 */
   swing: number

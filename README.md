@@ -30,6 +30,10 @@ npm run build
 | ⏺ Record | arm, press play, and notes you play (keyboard or MIDI) are written into the pattern, snapped to 1/16 |
 | Channel panel (⚙ on a channel) | choose Piano / Synth / Bass / Pad / Pluck, a drum, or your own sample; shape knobs; on-screen keyboard |
 | Piano Roll (F7, or right-click a channel) | click = note (drag sets length), drag = move, drag right edge = resize, right-click/drag = delete, Ctrl+drag = box select; Delete, Ctrl+A, arrows (Shift = octave/bar). Toolbar: snap, chord stamp, slide notes, ghost notes, Tools (quantize, chop, strum, arpeggiate, legato, transpose). Bottom lane edits velocity / pan / fine pitch / cutoff per note |
+| Capture what you played | everything you play on the keyboard/MIDI is remembered, even when stopped. Press **Capture played** (Piano Roll) or **Add what I played** (Channel panel) to turn your last phrase into notes (saved with the project) |
+| PAT / SONG | top bar: PAT loops the current pattern, SONG plays the Playlist |
+| Playlist (F5) | draw: click a track to place the current pattern; drag = move (across tracks), drag edges = resize/trim, scissors = slice, Ctrl+D duplicate, Delete; right-click a clip for options. Ruler: click = play from here, drag = loop region, right-click = clear loop. Drop audio from the Browser/Explorer to add audio clips |
+| Audio clips | right-click: Resample (speed changes pitch) or Stretch (speed and pitch independent), stretch to fit the clip, speed ×2/×½, pitch ±1 / ±12 |
 | Undo / redo | **Ctrl+Z** / **Ctrl+Y** (or Ctrl+Shift+Z); drags and knob turns count as one step |
 | Samples as instruments | in the Channel panel: **Detect** the root note, choose **Note length** playback, then play the sample at any pitch (e.g. a guitar note) |
 

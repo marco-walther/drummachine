@@ -1,6 +1,5 @@
 import { create } from 'zustand'
-import { useProject } from './project'
-import type { ProjectData } from './types'
+import { pickSaved, savedDataChanged, useProject, type SavedData } from './project'
 
 /**
  * Undo/redo for project data. Snapshots are cheap: the store is immutable
@@ -9,32 +8,13 @@ import type { ProjectData } from './types'
  * gesture (beginGesture/endGesture) ends.
  */
 
-type Snapshot = Pick<
-  ProjectData,
-  'samples' | 'bpm' | 'swing' | 'masterVolume' | 'channels' | 'patterns' | 'currentPatternId'
->
+type Snapshot = SavedData
 
 const LIMIT = 200
 const MERGE_MS = 400
 
-const snap = (s: ProjectData): Snapshot => ({
-  samples: s.samples,
-  bpm: s.bpm,
-  swing: s.swing,
-  masterVolume: s.masterVolume,
-  channels: s.channels,
-  patterns: s.patterns,
-  currentPatternId: s.currentPatternId
-})
-
-const changed = (a: ProjectData, b: ProjectData) =>
-  a.samples !== b.samples ||
-  a.bpm !== b.bpm ||
-  a.swing !== b.swing ||
-  a.masterVolume !== b.masterVolume ||
-  a.channels !== b.channels ||
-  a.patterns !== b.patterns ||
-  a.currentPatternId !== b.currentPatternId
+const snap = pickSaved
+const changed = savedDataChanged
 
 export const useHistory = create<{ past: Snapshot[]; future: Snapshot[] }>(() => ({ past: [], future: [] }))
 

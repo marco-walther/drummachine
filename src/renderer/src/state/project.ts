@@ -5,7 +5,9 @@ import {
   STEP_TICKS,
   type Channel,
   type ChannelSource,
+  type Clip,
   type DrumPreset,
+  type PlaylistTrack,
   type InstrumentKind,
   type InstrumentParams,
   type Note,
@@ -15,6 +17,31 @@ import {
 } from './types'
 
 export const uid = (): string => crypto.randomUUID().slice(0, 8)
+
+/**
+ * Project fields that are saved, undoable and make the project "dirty".
+ * (selectedChannelId is view state and deliberately not listed.)
+ */
+export const SAVED_KEYS = [
+  'samples',
+  'tracks',
+  'clips',
+  'songMode',
+  'loop',
+  'bpm',
+  'swing',
+  'masterVolume',
+  'channels',
+  'patterns',
+  'currentPatternId'
+] as const satisfies readonly (keyof ProjectData)[]
+
+export type SavedData = Pick<ProjectData, (typeof SAVED_KEYS)[number]>
+
+export const savedDataChanged = (a: ProjectData, b: ProjectData) => SAVED_KEYS.some((k) => a[k] !== b[k])
+
+export const pickSaved = (s: ProjectData): SavedData =>
+  Object.fromEntries(SAVED_KEYS.map((k) => [k, s[k]])) as unknown as SavedData
 
 export const PRESET_NAMES: Record<DrumPreset, string> = {
   kick: 'Kick',
@@ -95,6 +122,31 @@ export function notesInStep(notes: Note[] | undefined, step: number): Note[] {
   return notes.filter((n) => n.tick >= start && n.tick < start + STEP_TICKS)
 }
 
+export function makeTrack(name: string): PlaylistTrack {
+  return { id: uid(), name, muted: false }
+}
+
+export function makeClip(partial: Pick<Clip, 'trackId' | 'start' | 'length' | 'kind'> & Partial<Clip>): Clip {
+  return { id: uid(), offset: 0, sourceOffset: 0, gain: 0.8, pitch: 0, rate: 1, stretch: false, ...partial }
+}
+
+/** Split a clip at an absolute tick into two clips (null if the tick is not inside it). */
+export function splitClip(clip: Clip, at: number, secondsPerTick: number): [Clip, Clip] | null {
+  if (at <= clip.start || at >= clip.start + clip.length) return null
+  const left = { ...clip, length: at - clip.start }
+  const into = at - clip.start
+  const speed = clip.stretch ? clip.rate : clip.rate * Math.pow(2, clip.pitch / 12)
+  const right: Clip = {
+    ...clip,
+    id: uid(),
+    start: at,
+    length: clip.length - into,
+    offset: clip.offset + into,
+    sourceOffset: clip.sourceOffset + into * secondsPerTick * speed
+  }
+  return [left, right]
+}
+
 export function initialProject(): ProjectData {
   // FL's empty-project default kit order.
   const channels = (['kick', 'clap', 'hat', 'snare'] as DrumPreset[]).map((preset) =>
@@ -103,6 +155,10 @@ export function initialProject(): ProjectData {
   const pattern = makePattern('Pattern 1')
   return {
     samples: {},
+    tracks: Array.from({ length: 8 }, (_, i) => makeTrack(`Track ${i + 1}`)),
+    clips: [],
+    songMode: false,
+    loop: null,
     bpm: 130,
     swing: 0,
     masterVolume: 0.8,
@@ -154,6 +210,17 @@ export interface ProjectActions {
   deletePattern(id: string): void
   selectPattern(id: string): void
   setPatternLength(id: string, steps: number): void
+  // playlist
+  setSongMode(on: boolean): void
+  setLoop(loop: { start: number; end: number } | null): void
+  addTrack(): void
+  updateTrack(id: string, patch: Partial<Omit<PlaylistTrack, 'id'>>): void
+  /** Returns the new clip's id. */
+  addClip(clip: Clip): string
+  updateClip(id: string, patch: Partial<Omit<Clip, 'id' | 'kind'>>): void
+  /** Replace several clips at once (drag of a selection). */
+  setClips(clips: Clip[]): void
+  removeClips(ids: string[]): void
 }
 
 export type ProjectStore = ProjectData & ProjectActions
@@ -343,11 +410,50 @@ export const useProject = create<ProjectStore>()(
           const p = s.patterns.find((x) => x.id === id)
           if (p && name.trim()) p.name = name.trim()
         }),
+      setSongMode: (on) => set((s) => void (s.songMode = on)),
+      setLoop: (loop) =>
+        set((s) => {
+          s.loop = loop && loop.end - loop.start >= STEP_TICKS ? { start: Math.max(0, loop.start), end: loop.end } : null
+        }),
+      addTrack: () => set((s) => void s.tracks.push(makeTrack(`Track ${s.tracks.length + 1}`))),
+      updateTrack: (id, patch) =>
+        set((s) => {
+          const t = s.tracks.find((x) => x.id === id)
+          if (t) Object.assign(t, patch)
+        }),
+      addClip: (clip) => {
+        set((s) => void s.clips.push(clip))
+        return clip.id
+      },
+      updateClip: (id, patch) =>
+        set((s) => {
+          const c = s.clips.find((x) => x.id === id)
+          if (!c) return
+          Object.assign(c, patch)
+          c.start = Math.max(0, Math.round(c.start))
+          c.length = Math.max(STEP_TICKS, Math.round(c.length))
+          c.gain = clamp(c.gain, 0, 1)
+          c.rate = clamp(c.rate, 0.25, 4)
+          c.pitch = clamp(Math.round(c.pitch), -24, 24)
+        }),
+      setClips: (clips) =>
+        set((s) => {
+          const byId = new Map(clips.map((c) => [c.id, c]))
+          s.clips = s.clips.map((c) => byId.get(c.id) ?? c)
+          for (const c of clips) if (!s.clips.some((x) => x.id === c.id)) s.clips.push(c)
+        }),
+      removeClips: (ids) =>
+        set((s) => {
+          const gone = new Set(ids)
+          s.clips = s.clips.filter((c) => !gone.has(c.id))
+        }),
+
       deletePattern: (id) =>
         set((s) => {
           if (s.patterns.length <= 1) return
           const i = s.patterns.findIndex((p) => p.id === id)
           if (i < 0) return
+          s.clips = s.clips.filter((c) => c.patternId !== id) // its clips go with it
           s.patterns.splice(i, 1)
           if (s.currentPatternId === id) s.currentPatternId = s.patterns[Math.max(0, i - 1)].id
         }),

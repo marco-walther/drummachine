@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { PROJECT_FORMAT, type ProjectDoc } from '@shared/api'
 import { fromDoc, toDoc } from './persistence'
-import { initialProject, instrumentSource, makeChannel, makeNote, sampleSource } from './project'
+import { initialProject, instrumentSource, makeChannel, makeClip, makeNote, sampleSource } from './project'
 import { STEP_TICKS, type ProjectData } from './types'
 
 function sampleProject(): ProjectData {
@@ -30,6 +30,43 @@ describe('project file round trip', () => {
     expect(back.patterns).toEqual(p.patterns)
     expect(back.currentPatternId).toBe(p.currentPatternId)
     expect(back.samples.s1).toEqual(p.samples.s1)
+  })
+
+  it('keeps the playlist: tracks, clips (pattern + audio with warp), song mode and loop', () => {
+    const p = sampleProject()
+    p.samples.track = { id: 'track', name: 'Vocals', path: 'C:\\v.wav' }
+    p.clips = [
+      makeClip({ trackId: p.tracks[0].id, kind: 'pattern', patternId: p.patterns[0].id, start: 384, length: 768, offset: 96 }),
+      makeClip({ trackId: p.tracks[2].id, kind: 'audio', sampleId: 'track', start: 0, length: 300, sourceOffset: 1.5, pitch: -3, rate: 1.25, stretch: true })
+    ]
+    p.tracks[1].muted = true
+    p.songMode = true
+    p.loop = { start: 0, end: 768 }
+    const doc = toDoc(p)
+    expect(doc.samples.map((s) => s.id).sort()).toEqual(['s1', 'track']) // audio clip samples are saved too
+    const back = fromDoc(JSON.parse(JSON.stringify(doc)))
+    expect(back.clips).toEqual(p.clips)
+    expect(back.tracks).toEqual(p.tracks)
+    expect([back.songMode, back.loop]).toEqual([true, { start: 0, end: 768 }])
+  })
+
+  it('drops clips that point at missing tracks, patterns or samples', () => {
+    const p = sampleProject()
+    p.clips = [
+      makeClip({ trackId: 'nope', kind: 'pattern', patternId: p.patterns[0].id, start: 0, length: 384 }),
+      makeClip({ trackId: p.tracks[0].id, kind: 'pattern', patternId: 'gone', start: 0, length: 384 }),
+      makeClip({ trackId: p.tracks[0].id, kind: 'audio', sampleId: 'gone', start: 0, length: 384 })
+    ]
+    expect(fromDoc(JSON.parse(JSON.stringify(toDoc(p)))).clips).toEqual([])
+  })
+
+  it('older files without a playlist get the default empty tracks', () => {
+    const doc = toDoc(sampleProject())
+    const old = { ...doc, project: { ...(doc.project as object), tracks: undefined, clips: undefined } }
+    const back = fromDoc(old)
+    expect(back.tracks).toHaveLength(8)
+    expect(back.clips).toEqual([])
+    expect(back.songMode).toBe(false)
   })
 
   it('only saves samples that channels use', () => {

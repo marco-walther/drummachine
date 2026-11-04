@@ -1,6 +1,27 @@
 import { PROJECT_FORMAT, PROJECT_VERSION, type ProjectDoc, type SampleDocEntry } from '@shared/api'
-import { INSTRUMENT_DEFAULTS, initialProject, makeChannel, makeNote, makePattern, sampleSource, uid } from './project'
-import type { Channel, ChannelSource, DrumPreset, InstrumentKind, Note, Pattern, ProjectData, SampleRef } from './types'
+import {
+  INSTRUMENT_DEFAULTS,
+  initialProject,
+  makeChannel,
+  makeClip,
+  makeNote,
+  makePattern,
+  sampleSource,
+  uid
+} from './project'
+import {
+  STEP_TICKS,
+  type Channel,
+  type ChannelSource,
+  type Clip,
+  type DrumPreset,
+  type InstrumentKind,
+  type Note,
+  type Pattern,
+  type PlaylistTrack,
+  type ProjectData,
+  type SampleRef
+} from './types'
 
 /**
  * Project ⇄ file document. Loading is defensive: anything missing or malformed
@@ -10,7 +31,10 @@ import type { Channel, ChannelSource, DrumPreset, InstrumentKind, Note, Pattern,
 const PRESETS: DrumPreset[] = ['kick', 'snare', 'clap', 'hat', 'openhat', 'tom']
 
 export function toDoc(state: ProjectData): ProjectDoc {
-  const used = new Set(state.channels.flatMap((c) => (c.source.type === 'sample' ? [c.source.sampleId] : [])))
+  const used = new Set([
+    ...state.channels.flatMap((c) => (c.source.type === 'sample' ? [c.source.sampleId] : [])),
+    ...state.clips.flatMap((c) => (c.kind === 'audio' && c.sampleId ? [c.sampleId] : []))
+  ])
   const samples: SampleDocEntry[] = Object.values(state.samples)
     .filter((s) => used.has(s.id))
     .map((s) => ({ id: s.id, name: s.name, absPath: s.path, relPath: null }))
@@ -19,6 +43,10 @@ export function toDoc(state: ProjectData): ProjectDoc {
     version: PROJECT_VERSION,
     savedAt: new Date().toISOString(),
     project: {
+      tracks: state.tracks,
+      clips: state.clips,
+      songMode: state.songMode,
+      loop: state.loop,
       bpm: state.bpm,
       swing: state.swing,
       masterVolume: state.masterVolume,
@@ -151,7 +179,47 @@ export function fromDoc(doc: ProjectDoc): ProjectData {
   if (patterns.length === 0) patterns = [makePattern('Pattern 1')]
   const current = typeof raw.currentPatternId === 'string' && patterns.some((p) => p.id === raw.currentPatternId)
 
+  // playlist (absent in Phase 1–4 files → default empty tracks)
+  let tracks: PlaylistTrack[] = (Array.isArray(raw.tracks) ? raw.tracks : [])
+    .filter(isObj)
+    .map((t, i) => ({ id: str(t.id, uid()), name: str(t.name, `Track ${i + 1}`), muted: bool(t.muted, false) }))
+  if (tracks.length === 0) tracks = fallback.tracks
+  const trackIds = new Set(tracks.map((t) => t.id))
+  const patternIds = new Set(patterns.map((p) => p.id))
+  const clips: Clip[] = (Array.isArray(raw.clips) ? raw.clips : []).filter(isObj).flatMap((c) => {
+    const kind = c.kind === 'audio' ? 'audio' : c.kind === 'pattern' ? 'pattern' : null
+    if (!kind || typeof c.trackId !== 'string' || !trackIds.has(c.trackId)) return []
+    if (kind === 'pattern' && !(typeof c.patternId === 'string' && patternIds.has(c.patternId))) return []
+    if (kind === 'audio' && !(typeof c.sampleId === 'string' && samples[c.sampleId])) return []
+    return [
+      makeClip({
+        id: str(c.id, uid()),
+        trackId: c.trackId,
+        kind,
+        start: Math.max(0, Math.round(num(c.start, 0))),
+        length: Math.max(STEP_TICKS, Math.round(num(c.length, STEP_TICKS * 16))),
+        patternId: kind === 'pattern' ? (c.patternId as string) : undefined,
+        sampleId: kind === 'audio' ? (c.sampleId as string) : undefined,
+        offset: Math.max(0, Math.round(num(c.offset, 0))),
+        sourceOffset: Math.max(0, num(c.sourceOffset, 0)),
+        gain: num(c.gain, 0.8, 0, 1),
+        pitch: Math.round(num(c.pitch, 0, -24, 24)),
+        rate: num(c.rate, 1, 0.25, 4),
+        stretch: bool(c.stretch, false)
+      })
+    ]
+  })
+  const loopRaw = isObj(raw.loop) ? raw.loop : null
+  const loop =
+    loopRaw && typeof loopRaw.start === 'number' && typeof loopRaw.end === 'number' && loopRaw.end > loopRaw.start
+      ? { start: Math.max(0, loopRaw.start), end: loopRaw.end }
+      : null
+
   return {
+    tracks,
+    clips,
+    songMode: bool(raw.songMode, false),
+    loop,
     samples,
     bpm: num(raw.bpm, fallback.bpm, 20, 400),
     swing: num(raw.swing, 0, 0, 1),

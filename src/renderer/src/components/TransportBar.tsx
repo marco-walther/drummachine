@@ -48,6 +48,7 @@ const THEME_ICON = { auto: SunMoon, light: Sun, dark: Moon }
 export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m: ThemeMode): void }) {
   const playing = useTransportUi((s) => s.playing)
   const recording = useTransportUi((s) => s.recording)
+  const songMode = useProject((s) => s.songMode)
   const typing = useTypingKeyboard((s) => s.enabled)
   const bpm = useProject((s) => s.bpm)
   const setBpm = useProject((s) => s.setBpm)
@@ -61,6 +62,22 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
       <FileMenu className={barButton} />
 
       <div className="flex items-center gap-1">
+        <div className="mr-1 flex overflow-hidden rounded-sm border border-line" role="group" aria-label="Play mode">
+          {(['PAT', 'SONG'] as const).map((m) => (
+            <button
+              key={m}
+              title={m === 'PAT' ? 'Pattern mode: loop the current pattern' : 'Song mode: play the Playlist'}
+              aria-pressed={songMode === (m === 'SONG')}
+              onClick={() => useProject.getState().setSongMode(m === 'SONG')}
+              className={cn(
+                'px-1.5 py-1 font-mono text-[10px] tracking-wider',
+                songMode === (m === 'SONG') ? 'bg-inv text-inv-ink' : 'text-muted hover:bg-card hover:text-ink'
+              )}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
         <button
           aria-label={playing ? 'Stop' : 'Play'}
           title="Play / Stop (Space)"

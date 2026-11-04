@@ -2,9 +2,11 @@ import * as Tone from 'tone'
 import { create } from 'zustand'
 import { makeNote, selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
-import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type Note, type ProjectData } from '@/state/types'
+import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type Clip, type Note, type ProjectData } from '@/state/types'
 import { isSilent, noteCutoffHz } from './mixing'
 import { ensureSamples } from './samples'
+import { audioClipStarts, songNoteEvents, songTickAt } from './song'
+import { logPlayed } from '@/input/capture'
 import {
   gainToDb,
   notesInWindow,
@@ -13,7 +15,7 @@ import {
   stepInPattern,
   swingDelayTicks
 } from './timing'
-import { createVoice, sourceKey, type Voice } from './voices'
+import { createVoice, sampleBuffers, sourceKey, type Voice } from './voices'
 
 /**
  * The single audio engine. Lives in the main window's renderer; pop-out panels
@@ -110,23 +112,53 @@ function sync(state: ProjectData) {
   for (const ch of state.channels) syncChannel(ch, anySolo)
 }
 
+function playNote(channelId: string, note: Note, offsetTicks: number, time: number, spt: number, swing: number) {
+  const state = useProject.getState()
+  const ch = state.channels.find((c) => c.id === channelId)
+  const strip = strips.get(channelId)
+  if (!ch || !strip) return
+  const at = time + (offsetTicks + swingDelayTicks(note.tick, swing)) * spt
+  const pitch = note.key + ch.pitch + note.finePitch / 100
+  applyExpression(strip, note, at)
+  if (note.slide) strip.voice.glide(at, pitch, note.length * spt)
+  else strip.voice.play(at, pitch, note.velocity, note.length * spt)
+}
+
+/** Song mode: where play started, the previous window's position (to detect loop jumps). */
+let songStart = 0
+let prevSongTick = -1
+
 function tick(time: number) {
   const state = useProject.getState()
-  const pattern = selectCurrentPattern(state)
-  const step = stepInPattern(absStep++, pattern.lengthSteps)
-  const windowStart = step * STEP_TICKS
   const spt = secondsPerTick(state.bpm)
+  const n = absStep++
+  let step: number
+  let songTick = -1
 
-  for (const ch of state.channels) {
-    const strip = strips.get(ch.id)
-    if (!strip) continue
-    for (const note of notesInWindow(pattern.notes[ch.id], windowStart, STEP_TICKS)) {
-      const offset = note.tick - windowStart + swingDelayTicks(note.tick, state.swing)
-      const at = time + offset * spt
-      const pitch = note.key + ch.pitch + note.finePitch / 100
-      applyExpression(strip, note, at)
-      if (note.slide) strip.voice.glide(at, pitch, note.length * spt)
-      else strip.voice.play(at, pitch, note.velocity, note.length * spt)
+  if (state.songMode) {
+    songTick = songTickAt(songStart, n, STEP_TICKS, state.loop)
+    const fresh = songTick !== prevSongTick + STEP_TICKS
+    prevSongTick = songTick
+    for (const e of songNoteEvents(state.clips, state.tracks, state.patterns, songTick)) {
+      playNote(e.channelId, e.note, e.offset, time, spt, state.swing)
+    }
+    for (const s of audioClipStarts(state.clips, state.tracks, songTick, STEP_TICKS, fresh)) {
+      startAudioClip(s.clip, time + s.delay * spt, s.into, spt)
+    }
+    // step lights in the rack/piano roll: the current pattern, if a clip of it is playing
+    const clip = state.clips.find(
+      (c) => c.kind === 'pattern' && c.patternId === state.currentPatternId && songTick >= c.start && songTick < c.start + c.length
+    )
+    const len = selectCurrentPattern(state).lengthSteps
+    step = clip ? stepInPattern((songTick - clip.start + clip.offset) / STEP_TICKS, len) : -1
+  } else {
+    const pattern = selectCurrentPattern(state)
+    step = stepInPattern(n, pattern.lengthSteps)
+    const windowStart = step * STEP_TICKS
+    for (const ch of state.channels) {
+      for (const note of notesInWindow(pattern.notes[ch.id], windowStart, STEP_TICKS)) {
+        playNote(ch.id, note, note.tick - windowStart, time, spt, state.swing)
+      }
     }
   }
 
@@ -134,10 +166,47 @@ function tick(time: number) {
   // requestAnimationFrame, which stops when this window is hidden/covered.
   setTimeout(
     () => {
-      if (useTransportUi.getState().playing) useTransportUi.setState({ step })
+      if (useTransportUi.getState().playing) useTransportUi.setState({ step, songTick })
     },
     Math.max(0, (time - Tone.immediate()) * 1000)
   )
+}
+
+// ---- audio clips (Playlist) ----
+
+const clipPlayers = new Set<Tone.Player | Tone.GrainPlayer>()
+let clipBus: Tone.Gain | null = null
+
+/**
+ * Start an audio clip `into` ticks after its beginning. Resample mode: speed and
+ * pitch move together (Player.playbackRate). Stretch mode: speed and pitch are
+ * independent (granular GrainPlayer: playbackRate + detune).
+ */
+function startAudioClip(clip: Clip, at: number, into: number, spt: number) {
+  const buffer = clip.sampleId ? sampleBuffers.get(clip.sampleId) : undefined
+  if (!buffer?.loaded) return
+  clipBus ??= new Tone.Gain(1).toDestination() // the Mixer (Phase 6) will route this
+  const speed = clip.stretch ? clip.rate : clip.rate * Math.pow(2, clip.pitch / 12)
+  const offset = clip.sourceOffset + into * spt * speed
+  if (offset >= buffer.duration) return
+  const remaining = (clip.length - into) * spt
+  const player = clip.stretch
+    ? new Tone.GrainPlayer({ url: buffer, playbackRate: clip.rate, detune: clip.pitch * 100, grainSize: 0.1, overlap: 0.05 })
+    : new Tone.Player({ url: buffer, playbackRate: speed })
+  player.volume.value = gainToDb(clip.gain)
+  player.connect(clipBus)
+  player.onstop = () => {
+    clipPlayers.delete(player)
+    setTimeout(() => player.dispose(), 50)
+  }
+  clipPlayers.add(player)
+  player.start(at, offset)
+  player.stop(at + remaining)
+}
+
+function stopAudioClips() {
+  for (const p of clipPlayers) p.stop()
+  clipPlayers.clear()
 }
 
 export const engine = {
@@ -164,10 +233,14 @@ export const engine = {
     if (useTransportUi.getState().playing) return
     const t = transport()
     absStep = 0
+    // song mode starts at the loop start, else at the song position marker
+    const st = useProject.getState()
+    songStart = st.loop ? st.loop.start : useTransportUi.getState().songPosition
+    prevSongTick = -1
     t.position = 0
     repeatId = t.scheduleRepeat(tick, '16n', 0)
     t.start('+0.05')
-    useTransportUi.setState({ playing: true, step: 0 })
+    useTransportUi.setState({ playing: true, step: st.songMode ? -1 : 0, songTick: st.songMode ? songStart : -1 })
   },
 
   stop() {
@@ -176,7 +249,8 @@ export const engine = {
     if (repeatId !== null) t.clear(repeatId)
     repeatId = null
     t.cancel(0)
-    useTransportUi.setState({ playing: false, step: -1 })
+    stopAudioClips()
+    useTransportUi.setState({ playing: false, step: -1, songTick: -1 })
   },
 
   toggle() {
@@ -222,6 +296,8 @@ export const engine = {
       const i = s.keys.indexOf(n.key)
       return i < 0 ? s : { keys: [...s.keys.slice(0, i), ...s.keys.slice(i + 1)] }
     })
+    // score log: everything played can be captured into the Piano Roll later
+    logPlayed({ channelId: n.channelId, key: n.key, velocity: n.velocity, start: n.startedAt, end: now })
     if (n.tick !== null && useTransportUi.getState().recording) recordNote(n, now)
   },
 
