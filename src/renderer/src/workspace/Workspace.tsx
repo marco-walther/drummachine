@@ -13,7 +13,7 @@ import { ChannelRack } from '@/panels/ChannelRack'
 import { ChannelSettings } from '@/panels/ChannelSettings'
 import { PianoRoll } from '@/panels/piano-roll/PianoRoll'
 import { Playlist } from '@/panels/playlist/Playlist'
-import { Placeholder } from '@/panels/Placeholder'
+import { Mixer } from '@/panels/mixer/Mixer'
 import { dockBack, popOut, restoreLayout, scheduleSave, useWorkspace, type PanelId } from './layout'
 import { registerWindow } from './windows'
 
@@ -25,7 +25,7 @@ const components: Record<PanelId, React.FunctionComponent<IDockviewPanelProps>> 
   playlist: () => <Playlist />,
   browser: () => <Browser />,
   channel: () => <ChannelSettings />,
-  mixer: () => <Placeholder phase={6} title="Mixer" text="Inserts, routing cables, sends, sidechain and effect slots." />
+  mixer: () => <Mixer />
 }
 
 const unregister = new Map<Window, () => void>()

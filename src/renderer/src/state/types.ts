@@ -123,7 +123,40 @@ export interface Clip {
   stretch: boolean
 }
 
+export type FxSlotType = 'eq' | 'compressor' | 'ducker' | 'filter' | 'delay' | 'reverb' | 'distortion' | 'limiter'
+
+export interface FxSlot {
+  id: string
+  type: FxSlotType
+  enabled: boolean
+  params: Record<string, number>
+}
+
+export interface MixerSend {
+  /** target insert index (0 = Master) */
+  target: number
+  /** 0..1 */
+  amount: number
+  /** feeds the target's sidechain input (for its Sidechain duck) instead of its audio */
+  sidechain: boolean
+}
+
+/** A mixer track. Index 0 in ProjectData.mixer is the Master. */
+export interface MixerInsert {
+  name: string
+  /** 0..1.25 linear gain (0.8 ≈ 0 dB-ish default) */
+  volume: number
+  pan: number
+  muted: boolean
+  /** up to 10 effect slots, processed top to bottom */
+  fx: FxSlot[]
+  /** where this insert's output goes (Master by default) */
+  sends: MixerSend[]
+}
+
 export interface ProjectData {
+  /** mixer tracks: [0] = Master, then inserts 1…N (channels route here by mixerTarget) */
+  mixer: MixerInsert[]
   /** samples by id, referenced by sample channels and audio clips */
   samples: Record<string, SampleRef>
   tracks: PlaylistTrack[]

@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { defaultParams, type FxType } from '@/audio/fx-defs'
+import { defaultMixer, makeInsert, MAX_FX, MAX_INSERTS, wouldLoop } from '@/audio/mixer-graph'
 import {
   ROOT_KEY,
   STEP_TICKS,
@@ -10,6 +12,8 @@ import {
   type PlaylistTrack,
   type InstrumentKind,
   type InstrumentParams,
+  type MixerInsert,
+  type MixerSend,
   type Note,
   type Pattern,
   type ProjectData,
@@ -23,6 +27,7 @@ export const uid = (): string => crypto.randomUUID().slice(0, 8)
  * (selectedChannelId is view state and deliberately not listed.)
  */
 export const SAVED_KEYS = [
+  'mixer',
   'samples',
   'tracks',
   'clips',
@@ -154,6 +159,7 @@ export function initialProject(): ProjectData {
   )
   const pattern = makePattern('Pattern 1')
   return {
+    mixer: defaultMixer(),
     samples: {},
     tracks: Array.from({ length: 8 }, (_, i) => makeTrack(`Track ${i + 1}`)),
     clips: [],
@@ -221,6 +227,17 @@ export interface ProjectActions {
   /** Replace several clips at once (drag of a selection). */
   setClips(clips: Clip[]): void
   removeClips(ids: string[]): void
+  // mixer
+  addInsert(): void
+  updateInsert(index: number, patch: Partial<Omit<MixerInsert, 'fx' | 'sends'>>): void
+  addFx(index: number, type: FxType): void
+  updateFx(index: number, fxId: string, patch: { enabled?: boolean; params?: Record<string, number> }): void
+  removeFx(index: number, fxId: string): void
+  moveFx(index: number, from: number, to: number): void
+  /** false when the send would create a loop (or already exists) */
+  addSend(from: number, to: number, sidechain?: boolean): boolean
+  updateSend(from: number, target: number, patch: Partial<Pick<MixerSend, 'amount' | 'sidechain'>>): void
+  removeSend(from: number, target: number): void
 }
 
 export type ProjectStore = ProjectData & ProjectActions
@@ -446,6 +463,61 @@ export const useProject = create<ProjectStore>()(
         set((s) => {
           const gone = new Set(ids)
           s.clips = s.clips.filter((c) => !gone.has(c.id))
+        }),
+
+      addInsert: () =>
+        set((s) => {
+          if (s.mixer.length <= MAX_INSERTS) s.mixer.push(makeInsert(`Insert ${s.mixer.length}`))
+        }),
+      updateInsert: (index, patch) =>
+        set((s) => {
+          const ins = s.mixer[index]
+          if (!ins) return
+          Object.assign(ins, patch)
+          ins.volume = clamp(ins.volume, 0, 1.25)
+          ins.pan = clamp(ins.pan, -1, 1)
+        }),
+      addFx: (index, type) =>
+        set((s) => {
+          const ins = s.mixer[index]
+          if (ins && ins.fx.length < MAX_FX) ins.fx.push({ id: uid(), type, enabled: true, params: defaultParams(type) })
+        }),
+      updateFx: (index, fxId, patch) =>
+        set((s) => {
+          const slot = s.mixer[index]?.fx.find((f) => f.id === fxId)
+          if (!slot) return
+          if (patch.enabled !== undefined) slot.enabled = patch.enabled
+          if (patch.params) Object.assign(slot.params, patch.params)
+        }),
+      removeFx: (index, fxId) =>
+        set((s) => {
+          const ins = s.mixer[index]
+          if (ins) ins.fx = ins.fx.filter((f) => f.id !== fxId)
+        }),
+      moveFx: (index, from, to) =>
+        set((s) => {
+          const fx = s.mixer[index]?.fx
+          if (!fx || from === to || from < 0 || from >= fx.length) return
+          const [slot] = fx.splice(from, 1)
+          fx.splice(clamp(to, 0, fx.length), 0, slot)
+        }),
+      addSend: (from, to, sidechain = false) => {
+        const m = get().mixer
+        if (!m[from] || !m[to] || m[from].sends.some((x) => x.target === to) || wouldLoop(m, from, to)) return false
+        set((s) => void s.mixer[from].sends.push({ target: to, amount: sidechain ? 1 : 0.8, sidechain }))
+        return true
+      },
+      updateSend: (from, target, patch) =>
+        set((s) => {
+          const send = s.mixer[from]?.sends.find((x) => x.target === target)
+          if (!send) return
+          Object.assign(send, patch)
+          send.amount = clamp(send.amount, 0, 1)
+        }),
+      removeSend: (from, target) =>
+        set((s) => {
+          const ins = s.mixer[from]
+          if (ins) ins.sends = ins.sends.filter((x) => x.target !== target)
         }),
 
       deletePattern: (id) =>

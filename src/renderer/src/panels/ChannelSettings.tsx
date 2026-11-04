@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react'
-import { AudioLines, ChevronDown, Drum, KeyboardMusic, ListPlus, Minus, Plus, ScanSearch } from 'lucide-react'
-import { captureToPianoRoll } from '@/panels/piano-roll/capture-action'
+import { AudioLines, ChevronDown, Drum, KeyboardMusic, Minus, Plus, ScanSearch } from 'lucide-react'
+import { RecordToggle } from '@/components/RecordToggle'
 import { showPanel } from '@/workspace/layout'
 import {
   DropdownMenu,
@@ -265,15 +265,12 @@ function PlayArea({ channel }: { channel: Channel }) {
       }
     >
       <PianoKeyboard from={octave * 12} octaves={2} onDown={onDown} onUp={onUp} typingOctave={enabled ? octave : undefined} />
-      <button
-        onClick={() => {
-          if (captureToPianoRoll(channel.id) > 0) showPanel('pianoRoll')
-        }}
-        title="Turn what you just played into notes in the Piano Roll (saved with the project)"
-        className="mt-2 flex h-7 items-center gap-1.5 rounded-sm border border-line px-2 text-muted hover:border-ink hover:text-ink"
-      >
-        <ListPlus size={13} /> Add what I played to the Piano Roll
-      </button>
+      <div className="mt-2 flex items-center gap-2">
+        <RecordToggle label />
+        <button onClick={() => showPanel('pianoRoll')} className="text-[11px] text-muted underline-offset-2 hover:text-ink hover:underline">
+          Open Piano Roll
+        </button>
+      </div>
       <p className="mt-2 text-[11px] leading-relaxed text-faint">
         {enabled ? (
           <>

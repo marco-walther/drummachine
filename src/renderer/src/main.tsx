@@ -23,11 +23,12 @@ if (import.meta.env.DEV) {
     import('./state/project'),
     import('./audio/voices'),
     import('./panels/piano-roll/ui-state'),
-    import('./state/history')
+    import('./state/history'),
+    import('./audio/mixer-engine')
   ]).then(
-    ([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows, actions, file, library, samples, toasts, keyboard, engineModule, pitch, project, voices, pianoRollUi, history]) => {
+    ([Tone, { engine }, { useProject }, { useTransportUi }, layout, windows, actions, file, library, samples, toasts, keyboard, engineModule, pitch, project, voices, pianoRollUi, history, mixerEngine]) => {
       Object.assign(window, {
-        __dm: { Tone, engine, useProject, useTransportUi, layout, windows, actions, file, library, samples, toasts, keyboard, engineModule, pitch, project, voices, pianoRollUi, history }
+        __dm: { Tone, engine, useProject, useTransportUi, layout, windows, actions, file, library, samples, toasts, keyboard, engineModule, pitch, project, voices, pianoRollUi, history, mixerEngine }
       })
     }
   )

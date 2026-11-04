@@ -1,4 +1,6 @@
 import { PROJECT_FORMAT, PROJECT_VERSION, type ProjectDoc, type SampleDocEntry } from '@shared/api'
+import { FX_TYPES, normalizeParams, type FxType } from '@/audio/fx-defs'
+import { defaultMixer, makeInsert, MAX_FX, MAX_INSERTS, wouldLoop } from '@/audio/mixer-graph'
 import {
   INSTRUMENT_DEFAULTS,
   initialProject,
@@ -15,7 +17,9 @@ import {
   type ChannelSource,
   type Clip,
   type DrumPreset,
+  type FxSlot,
   type InstrumentKind,
+  type MixerInsert,
   type Note,
   type Pattern,
   type PlaylistTrack,
@@ -43,6 +47,7 @@ export function toDoc(state: ProjectData): ProjectDoc {
     version: PROJECT_VERSION,
     savedAt: new Date().toISOString(),
     project: {
+      mixer: state.mixer,
       tracks: state.tracks,
       clips: state.clips,
       songMode: state.songMode,
@@ -149,6 +154,33 @@ function readPattern(v: unknown, channelIds: Set<string>): Pattern | null {
   }
 }
 
+/** Mixer from a file: unknown effects dropped, params clamped, sends that would loop discarded. */
+function readMixer(v: unknown): MixerInsert[] {
+  if (!Array.isArray(v) || v.length === 0) return defaultMixer()
+  const list = v.slice(0, MAX_INSERTS + 1)
+  const mixer: MixerInsert[] = list.map((x, i) => {
+    const o = isObj(x) ? x : {}
+    const base = makeInsert(i === 0 ? 'Master' : `Insert ${i}`, i !== 0)
+    const fx: FxSlot[] = (Array.isArray(o.fx) ? o.fx : [])
+      .filter(isObj)
+      .filter((f) => FX_TYPES.includes(f.type as FxType))
+      .slice(0, MAX_FX)
+      .map((f) => ({ id: str(f.id, uid()), type: f.type as FxType, enabled: bool(f.enabled, true), params: normalizeParams(f.type as FxType, f.params) }))
+    // sends are added below (validated against loops), so start empty
+    return { ...base, sends: [], name: str(o.name, base.name), volume: num(o.volume, base.volume, 0, 1.25), pan: num(o.pan, 0, -1, 1), muted: bool(o.muted, false), fx }
+  })
+  // add sends one by one, refusing anything invalid or looping
+  list.forEach((x, i) => {
+    if (i === 0 || !isObj(x) || !Array.isArray(x.sends)) return
+    for (const s of x.sends) {
+      if (!isObj(s) || typeof s.target !== 'number' || !mixer[s.target]) continue
+      if (mixer[i].sends.some((e) => e.target === s.target) || wouldLoop(mixer, i, s.target)) continue
+      mixer[i].sends.push({ target: s.target, amount: num(s.amount, 1, 0, 1), sidechain: bool(s.sidechain, false) })
+    }
+  })
+  return mixer
+}
+
 /** Build project state from a (validated-format) document. Throws only on a non-project. */
 export function fromDoc(doc: ProjectDoc): ProjectData {
   if (!doc || doc.format !== PROJECT_FORMAT) throw new Error('This is not a Drummachine project.')
@@ -209,6 +241,11 @@ export function fromDoc(doc: ProjectDoc): ProjectData {
       })
     ]
   })
+  const mixer = readMixer(raw.mixer)
+  // files from before the Mixer: their master volume becomes the Master fader
+  if (!Array.isArray(raw.mixer)) mixer[0].volume = num(raw.masterVolume, mixer[0].volume, 0, 1.25)
+  for (const ch of channels) if (ch.mixerTarget >= mixer.length) ch.mixerTarget = 0
+
   const loopRaw = isObj(raw.loop) ? raw.loop : null
   const loop =
     loopRaw && typeof loopRaw.start === 'number' && typeof loopRaw.end === 'number' && loopRaw.end > loopRaw.start
@@ -216,6 +253,7 @@ export function fromDoc(doc: ProjectDoc): ProjectData {
       : null
 
   return {
+    mixer,
     tracks,
     clips,
     songMode: bool(raw.songMode, false),

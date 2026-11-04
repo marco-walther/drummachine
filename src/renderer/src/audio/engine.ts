@@ -4,9 +4,10 @@ import { makeNote, selectCurrentPattern, useProject } from '@/state/project'
 import { useTransportUi } from '@/state/transport-ui'
 import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type Clip, type Note, type ProjectData } from '@/state/types'
 import { isSilent, noteCutoffHz } from './mixing'
+import { insertInput, syncMixer } from './mixer-engine'
 import { ensureSamples } from './samples'
 import { audioClipStarts, songNoteEvents, songTickAt } from './song'
-import { logPlayed } from '@/input/capture'
+import { usePianoRollUi } from '@/panels/piano-roll/ui-state'
 import {
   gainToDb,
   notesInWindow,
@@ -36,7 +37,7 @@ interface Strip {
   channel: Tone.Channel
   key: string
   /** last values pushed to the audio params (avoid re-scheduling on every state change) */
-  applied: { volume: number; pan: number; silent: boolean }
+  applied: { volume: number; pan: number; silent: boolean; target: number }
 }
 
 /** Apply a note's pan and cutoff at its start (the stage is per channel). */
@@ -69,18 +70,23 @@ function syncChannel(ch: Channel, anySolo: boolean) {
     strip.key = key
   }
   if (!strip) {
-    // Mixer routing (ch.mixerTarget) is applied in Phase 6; until then → master.
-    const channel = new Tone.Channel().toDestination()
+    const channel = new Tone.Channel()
     const panner = new Tone.Panner(0).connect(channel)
     const filter = new Tone.Filter({ type: 'lowpass', frequency: noteCutoffHz(1), rolloff: -12 }).connect(panner)
     const voice = createVoice(ch.source)
     voice.output.connect(filter)
-    strip = { voice, filter, panner, expr: { cutoff: 1, pan: 0 }, channel, key, applied: { volume: NaN, pan: NaN, silent: false } }
+    strip = { voice, filter, panner, expr: { cutoff: 1, pan: 0 }, channel, key, applied: { volume: NaN, pan: NaN, silent: false, target: -1 } }
     strips.set(ch.id, strip)
   } else {
     strip.voice.update(ch.source)
   }
   const a = strip.applied
+  // route to the channel's mixer insert (0 = Master)
+  if (a.target !== ch.mixerTarget) {
+    strip.channel.disconnect()
+    strip.channel.connect(insertInput(ch.mixerTarget))
+    a.target = ch.mixerTarget
+  }
   const silent = isSilent(ch, anySolo)
   if (a.silent !== silent) strip.channel.mute = a.silent = silent
   // Volume is set while unmuted only; Tone's mute restores its own pre-mute value.
@@ -95,7 +101,8 @@ function syncChannel(ch: Channel, anySolo: boolean) {
 function sync(state: ProjectData) {
   const t = transport()
   if (t.bpm.value !== state.bpm) t.bpm.value = state.bpm
-  Tone.getDestination().volume.value = gainToDb(state.masterVolume)
+  // the Master insert's fader is the master volume (top bar knob)
+  syncMixer(state.mixer)
 
   const ids = new Set(state.channels.map((c) => c.id))
   for (const [id, strip] of strips) {
@@ -128,10 +135,33 @@ function playNote(channelId: string, note: Note, offsetTicks: number, time: numb
 let songStart = 0
 let prevSongTick = -1
 
+/** Steps of metronome-only count-in before the music starts (record from stopped). */
+let countInSteps = 0
+let metronome: Tone.Synth | null = null
+
+/** Metronome click: higher on the first beat of a bar. Straight to the speakers (not the mix). */
+function click(time: number, downbeat: boolean) {
+  metronome ??= new Tone.Synth({
+    oscillator: { type: 'sine' },
+    envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.01 },
+    volume: -10
+  }).toDestination()
+  metronome.triggerAttackRelease(downbeat ? 1760 : 1320, 0.03, time, downbeat ? 0.9 : 0.6)
+}
+
 function tick(time: number) {
   const state = useProject.getState()
   const spt = secondsPerTick(state.bpm)
-  const n = absStep++
+  const raw = absStep++
+
+  // count-in: only clicks, nothing plays yet
+  if (raw < countInSteps) {
+    if (raw % 4 === 0) click(time, raw % 16 === 0)
+    return
+  }
+  const n = raw - countInSteps
+  // metronome while recording
+  if (useTransportUi.getState().recording && n % 4 === 0) click(time, n % 16 === 0)
   let step: number
   let songTick = -1
 
@@ -185,7 +215,7 @@ let clipBus: Tone.Gain | null = null
 function startAudioClip(clip: Clip, at: number, into: number, spt: number) {
   const buffer = clip.sampleId ? sampleBuffers.get(clip.sampleId) : undefined
   if (!buffer?.loaded) return
-  clipBus ??= new Tone.Gain(1).toDestination() // the Mixer (Phase 6) will route this
+  clipBus ??= new Tone.Gain(1).connect(insertInput(0)) // audio clips play through the Master insert
   const speed = clip.stretch ? clip.rate : clip.rate * Math.pow(2, clip.pitch / 12)
   const offset = clip.sourceOffset + into * spt * speed
   if (offset >= buffer.duration) return
@@ -228,11 +258,13 @@ export const engine = {
     useProject.subscribe((s) => sync(s))
   },
 
-  async play() {
+  /** Start playback; `countInBars` > 0 clicks the metronome first (used when recording from stopped). */
+  async play(countInBars = 0) {
     await Tone.start()
     if (useTransportUi.getState().playing) return
     const t = transport()
     absStep = 0
+    countInSteps = Math.max(0, countInBars) * 16
     // song mode starts at the loop start, else at the song position marker
     const st = useProject.getState()
     songStart = st.loop ? st.loop.start : useTransportUi.getState().songPosition
@@ -240,7 +272,11 @@ export const engine = {
     t.position = 0
     repeatId = t.scheduleRepeat(tick, '16n', 0)
     t.start('+0.05')
-    useTransportUi.setState({ playing: true, step: st.songMode ? -1 : 0, songTick: st.songMode ? songStart : -1 })
+    useTransportUi.setState({
+      playing: true,
+      step: st.songMode || countInSteps ? -1 : 0,
+      songTick: st.songMode && !countInSteps ? songStart : -1
+    })
   },
 
   stop() {
@@ -250,12 +286,23 @@ export const engine = {
     repeatId = null
     t.cancel(0)
     stopAudioClips()
+    countInSteps = 0
     useTransportUi.setState({ playing: false, step: -1, songTick: -1 })
   },
 
   toggle() {
     if (useTransportUi.getState().playing) engine.stop()
     else void engine.play()
+  },
+
+  /**
+   * Live record toggle. Turning it on while stopped starts the pattern with a
+   * one-bar metronome count-in; the metronome keeps clicking while recording.
+   * Turning it off stops recording (playback continues).
+   */
+  setRecording(on: boolean) {
+    useTransportUi.setState({ recording: on })
+    if (on && !useTransportUi.getState().playing) void engine.play(1)
   },
 
   /** Audition a channel immediately (clicking its name). */
@@ -269,8 +316,8 @@ export const engine = {
   /**
    * Live note (computer keyboard, on-screen keys, MIDI) on a channel. `key` is
    * the note's key (channel pitch is added, as for sequenced notes). Returns an
-   * id for noteOff. While recording + playing, the note is written into the
-   * current pattern when released (quantized to 1/16).
+   * id for noteOff. While recording, the note is written into the current
+   * pattern when released (snapped to the Piano Roll's snap).
    */
   noteOn(channelId: string, key: number, velocity = 0.8): number | null {
     const ch = useProject.getState().channels.find((c) => c.id === channelId)
@@ -296,8 +343,6 @@ export const engine = {
       const i = s.keys.indexOf(n.key)
       return i < 0 ? s : { keys: [...s.keys.slice(0, i), ...s.keys.slice(i + 1)] }
     })
-    // score log: everything played can be captured into the Piano Roll later
-    logPlayed({ channelId: n.channelId, key: n.key, velocity: n.velocity, start: n.startedAt, end: now })
     if (n.tick !== null && useTransportUi.getState().recording) recordNote(n, now)
   },
 
@@ -331,11 +376,20 @@ let nextLiveId = 1
 /** Keys currently held (for highlighting on-screen keyboards). */
 export const useHeldKeys = create<{ keys: number[] }>(() => ({ keys: [] }))
 
-/** Position inside the current pattern at the moment you hear it (not the look-ahead). */
+/**
+ * Position inside the current pattern at the moment you hear it (not the
+ * look-ahead). During the count-in: a note played just before the downbeat
+ * counts as beat 1; earlier ones are not recorded.
+ */
 function patternTickNow(): number | null {
   if (!useTransportUi.getState().playing) return null
   const len = selectCurrentPattern(useProject.getState()).lengthSteps * STEP_TICKS
-  const ticks = transport().getTicksAtTime(Tone.immediate())
+  // you play along with what you *hear*, which leaves the speakers after the output latency
+  const raw = Tone.getContext().rawContext as AudioContext
+  const latency = raw.outputLatency || raw.baseLatency || 0
+  const heard = Math.max(0, Tone.immediate() - latency)
+  const ticks = transport().getTicksAtTime(heard) - countInSteps * STEP_TICKS
+  if (ticks < 0) return ticks > -2 * STEP_TICKS ? 0 : null
   return ((ticks % len) + len) % len
 }
 
@@ -343,6 +397,6 @@ function recordNote(n: LiveNote, releasedAt: number) {
   const state = useProject.getState()
   const len = selectCurrentPattern(state).lengthSteps * STEP_TICKS
   const heldTicks = (releasedAt - n.startedAt) / secondsPerTick(state.bpm)
-  const { tick, length } = quantizeRecorded(n.tick!, heldTicks, len)
+  const { tick, length } = quantizeRecorded(n.tick!, heldTicks, len, usePianoRollUi.getState().snap)
   state.addNote(n.channelId, makeNote(tick, { key: n.key, velocity: n.velocity, length }))
 }

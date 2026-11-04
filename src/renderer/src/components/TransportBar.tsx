@@ -1,7 +1,7 @@
 import { useState } from 'react'
+import { RecordToggle } from '@/components/RecordToggle'
 import {
   ChevronDown,
-  Circle,
   Keyboard,
   LayoutPanelTop,
   Moon,
@@ -47,13 +47,13 @@ const THEME_ICON = { auto: SunMoon, light: Sun, dark: Moon }
 
 export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m: ThemeMode): void }) {
   const playing = useTransportUi((s) => s.playing)
-  const recording = useTransportUi((s) => s.recording)
   const songMode = useProject((s) => s.songMode)
   const typing = useTypingKeyboard((s) => s.enabled)
   const bpm = useProject((s) => s.bpm)
   const setBpm = useProject((s) => s.setBpm)
-  const masterVolume = useProject((s) => s.masterVolume)
-  const setMasterVolume = useProject((s) => s.setMasterVolume)
+  // the Master insert's fader (same control as in the Mixer)
+  const masterVolume = useProject((s) => s.mixer[0].volume)
+  const setMasterVolume = (v: number) => useProject.getState().updateInsert(0, { volume: v })
   const ThemeIcon = THEME_ICON[theme]
 
   return (
@@ -89,18 +89,7 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
         >
           {playing ? <Square size={12} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
         </button>
-        <button
-          aria-label={recording ? 'Stop recording' : 'Record notes you play'}
-          aria-pressed={recording}
-          title="Record: notes you play (keyboard / MIDI) while playing are written into the pattern"
-          onClick={() => useTransportUi.setState({ recording: !recording })}
-          className={cn(
-            'grid size-7 place-items-center rounded-sm border transition-colors',
-            recording ? 'border-inv bg-inv text-inv-ink' : 'border-line-strong text-ink hover:border-ink'
-          )}
-        >
-          <Circle size={11} fill={recording ? 'currentColor' : 'none'} strokeWidth={2.4} />
-        </button>
+        <RecordToggle />
         <button
           aria-label="Typing keyboard plays notes"
           aria-pressed={typing}

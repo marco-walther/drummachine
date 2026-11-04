@@ -38,6 +38,12 @@ describe('timing', () => {
     expect(quantizeRecorded(0, 10_000, len)).toEqual({ tick: 0, length: len }) // capped at pattern length
   })
 
+  it('quantizeRecorded follows the Piano Roll snap; snap 1 keeps exact timing', () => {
+    const len = 16 * STEP_TICKS
+    expect(quantizeRecorded(60, 100, len, 96)).toEqual({ tick: 96, length: 96 }) // 1/4 snap
+    expect(quantizeRecorded(37, 13, len, 1)).toEqual({ tick: 37, length: 13 }) // exact
+  })
+
   it('gainToDb', () => {
     expect(gainToDb(1)).toBe(0)
     expect(gainToDb(0)).toBe(-Infinity)

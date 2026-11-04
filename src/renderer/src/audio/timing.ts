@@ -26,17 +26,19 @@ export function notesInWindow(notes: Note[] | undefined, startTick: number, span
 }
 
 /**
- * Live-recorded note → pattern note: start snaps to the nearest 1/16 (wrapping
- * at the pattern end), length snaps to whole 1/16s, at least one step and at
- * most the pattern length.
+ * Live-recorded note → pattern note: start snaps to the nearest `snap` (the
+ * Piano Roll's snap; 1 = exact), wrapping at the pattern end; length snaps to
+ * whole snaps, at least one snap and at most the pattern length.
  */
 export function quantizeRecorded(
   startTick: number,
   heldTicks: number,
-  patternLength: number
+  patternLength: number,
+  snap = STEP_TICKS
 ): { tick: number; length: number } {
-  const tick = (Math.round(startTick / STEP_TICKS) * STEP_TICKS) % patternLength
-  const length = Math.min(patternLength, Math.max(STEP_TICKS, Math.round(heldTicks / STEP_TICKS) * STEP_TICKS))
+  const s = Math.max(1, snap)
+  const tick = (Math.round(startTick / s) * s) % patternLength
+  const length = Math.min(patternLength, Math.max(s, Math.round(heldTicks / s) * s))
   return { tick, length }
 }
 

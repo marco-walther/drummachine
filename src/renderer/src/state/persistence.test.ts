@@ -69,6 +69,24 @@ describe('project file round trip', () => {
     expect(back.songMode).toBe(false)
   })
 
+  it('keeps the mixer and refuses looping sends from a file', () => {
+    const p = sampleProject()
+    p.mixer[1].fx.push({ id: 'f1', type: 'delay', enabled: false, params: { time: 0.25, feedback: 0.5, mix: 0.4 } })
+    p.mixer[1].sends.push({ target: 2, amount: 0.5, sidechain: false })
+    p.mixer[2].sends.push({ target: 1, amount: 1, sidechain: true }) // loop: must be dropped
+    p.mixer[3].volume = 9
+    p.channels[0].mixerTarget = 1
+    const back = fromDoc(JSON.parse(JSON.stringify(toDoc(p))))
+    expect(back.mixer[1].fx).toEqual(p.mixer[1].fx)
+    expect(back.mixer[1].sends).toEqual([
+      { target: 0, amount: 1, sidechain: false },
+      { target: 2, amount: 0.5, sidechain: false }
+    ])
+    expect(back.mixer[2].sends).toEqual([{ target: 0, amount: 1, sidechain: false }])
+    expect(back.mixer[3].volume).toBe(1.25)
+    expect(back.channels[0].mixerTarget).toBe(1)
+  })
+
   it('only saves samples that channels use', () => {
     const doc = toDoc(sampleProject())
     expect(doc.samples.map((s) => s.id)).toEqual(['s1'])
