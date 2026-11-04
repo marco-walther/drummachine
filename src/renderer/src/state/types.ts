@@ -97,6 +97,65 @@ export interface PlaylistTrack {
   muted: boolean
 }
 
+/**
+ * A parameter that automation/controllers can move, as a path:
+ *   ch.<channelId>.volume | ch.<channelId>.pan
+ *   inst.<channelId>.attack|release|brightness|glide
+ *   mix.<insert>.volume | mix.<insert>.pan
+ *   fx.<insert>.<fxId>.<param>
+ * Values travel normalized 0..1 and are mapped to the parameter's range.
+ */
+export type ParamRef = string
+
+export interface AutomationPoint {
+  /** ticks from the clip start */
+  t: number
+  /** 0..1 */
+  v: number
+}
+
+export interface Automation {
+  id: string
+  name: string
+  /** one curve can drive several parameters */
+  targets: ParamRef[]
+  points: AutomationPoint[]
+  /** smooth (eased) curves between points instead of straight lines */
+  smooth: boolean
+}
+
+export type LfoShape = 'sine' | 'triangle' | 'square' | 'saw' | 'random'
+
+interface ControllerBase {
+  id: string
+  name: string
+  enabled: boolean
+  targets: ParamRef[]
+}
+export interface LfoController extends ControllerBase {
+  kind: 'lfo'
+  shape: LfoShape
+  /** true: `rate` is beats per cycle (tempo synced); false: `rate` is Hz */
+  sync: boolean
+  rate: number
+  /** 0..1 swing around the center */
+  depth: number
+  /** 0..1 */
+  center: number
+}
+export interface PeakController extends ControllerBase {
+  kind: 'peak'
+  /** what it listens to: ch.<channelId> or mix.<insert> */
+  source: string
+  /** value when silent, 0..1 */
+  base: number
+  /** -1..1: how far the level pushes the value (negative = ducks) */
+  amount: number
+  /** seconds for the level to fall back */
+  release: number
+}
+export type Controller = LfoController | PeakController
+
 export interface Clip {
   id: string
   trackId: string
@@ -104,7 +163,9 @@ export interface Clip {
   start: number
   /** visible length, ticks */
   length: number
-  kind: 'pattern' | 'audio'
+  kind: 'pattern' | 'audio' | 'automation'
+  /** automation clips: which automation curve */
+  automationId?: string
   /** pattern clips: which pattern (loops if the clip is longer) */
   patternId?: string
   /** pattern clips: ticks into the pattern where the clip begins (left trim) */
@@ -155,6 +216,10 @@ export interface MixerInsert {
 }
 
 export interface ProjectData {
+  /** automation curves by id (placed in the Playlist by automation clips) */
+  automations: Record<string, Automation>
+  /** internal controllers (LFO, peak follower) linked to parameters */
+  controllers: Controller[]
   /** mixer tracks: [0] = Master, then inserts 1…N (channels route here by mixerTarget) */
   mixer: MixerInsert[]
   /** samples by id, referenced by sample channels and audio clips */

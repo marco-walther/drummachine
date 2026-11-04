@@ -13,7 +13,10 @@ import {
 } from './project'
 import {
   STEP_TICKS,
+  type Automation,
   type Channel,
+  type Controller,
+  type LfoShape,
   type ChannelSource,
   type Clip,
   type DrumPreset,
@@ -47,6 +50,11 @@ export function toDoc(state: ProjectData): ProjectDoc {
     version: PROJECT_VERSION,
     savedAt: new Date().toISOString(),
     project: {
+      // only curves that a Playlist clip still uses
+      automations: Object.fromEntries(
+        Object.entries(state.automations).filter(([id]) => state.clips.some((c) => c.automationId === id))
+      ),
+      controllers: state.controllers,
       mixer: state.mixer,
       tracks: state.tracks,
       clips: state.clips,
@@ -154,6 +162,49 @@ function readPattern(v: unknown, channelIds: Set<string>): Pattern | null {
   }
 }
 
+const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+
+function readAutomations(v: unknown): Record<string, Automation> {
+  const out: Record<string, Automation> = {}
+  if (!isObj(v)) return out
+  for (const a of Object.values(v)) {
+    if (!isObj(a) || typeof a.id !== 'string') continue
+    const points = (Array.isArray(a.points) ? a.points : [])
+      .filter(isObj)
+      .map((p) => ({ t: Math.max(0, Math.round(num(p.t, 0))), v: num(p.v, 0.5, 0, 1) }))
+      .sort((x, y) => x.t - y.t)
+    out[a.id] = { id: a.id, name: str(a.name, 'Automation'), targets: strList(a.targets), points, smooth: bool(a.smooth, false) }
+  }
+  return out
+}
+
+const LFO_SHAPES: LfoShape[] = ['sine', 'triangle', 'square', 'saw', 'random']
+
+function readControllers(v: unknown): Controller[] {
+  if (!Array.isArray(v)) return []
+  return v.filter(isObj).flatMap((c): Controller[] => {
+    const base = { id: str(c.id, uid()), name: str(c.name, 'Controller'), enabled: bool(c.enabled, true), targets: strList(c.targets) }
+    if (c.kind === 'lfo') {
+      const sync = bool(c.sync, true)
+      return [
+        {
+          ...base,
+          kind: 'lfo',
+          shape: LFO_SHAPES.includes(c.shape as LfoShape) ? (c.shape as LfoShape) : 'sine',
+          sync,
+          rate: num(c.rate, 4, sync ? 0.25 : 0.01, sync ? 64 : 20),
+          depth: num(c.depth, 0.5, 0, 1),
+          center: num(c.center, 0.5, 0, 1)
+        }
+      ]
+    }
+    if (c.kind === 'peak') {
+      return [{ ...base, kind: 'peak', source: str(c.source, ''), base: num(c.base, 1, 0, 1), amount: num(c.amount, -0.8, -1, 1), release: num(c.release, 0.2, 0.01, 2) }]
+    }
+    return []
+  })
+}
+
 /** Mixer from a file: unknown effects dropped, params clamped, sends that would loop discarded. */
 function readMixer(v: unknown): MixerInsert[] {
   if (!Array.isArray(v) || v.length === 0) return defaultMixer()
@@ -218,11 +269,13 @@ export function fromDoc(doc: ProjectDoc): ProjectData {
   if (tracks.length === 0) tracks = fallback.tracks
   const trackIds = new Set(tracks.map((t) => t.id))
   const patternIds = new Set(patterns.map((p) => p.id))
+  const automations = readAutomations(raw.automations)
   const clips: Clip[] = (Array.isArray(raw.clips) ? raw.clips : []).filter(isObj).flatMap((c) => {
-    const kind = c.kind === 'audio' ? 'audio' : c.kind === 'pattern' ? 'pattern' : null
+    const kind = c.kind === 'audio' ? 'audio' : c.kind === 'pattern' ? 'pattern' : c.kind === 'automation' ? 'automation' : null
     if (!kind || typeof c.trackId !== 'string' || !trackIds.has(c.trackId)) return []
     if (kind === 'pattern' && !(typeof c.patternId === 'string' && patternIds.has(c.patternId))) return []
     if (kind === 'audio' && !(typeof c.sampleId === 'string' && samples[c.sampleId])) return []
+    if (kind === 'automation' && !(typeof c.automationId === 'string' && automations[c.automationId])) return []
     return [
       makeClip({
         id: str(c.id, uid()),
@@ -232,6 +285,7 @@ export function fromDoc(doc: ProjectDoc): ProjectData {
         length: Math.max(STEP_TICKS, Math.round(num(c.length, STEP_TICKS * 16))),
         patternId: kind === 'pattern' ? (c.patternId as string) : undefined,
         sampleId: kind === 'audio' ? (c.sampleId as string) : undefined,
+        automationId: kind === 'automation' ? (c.automationId as string) : undefined,
         offset: Math.max(0, Math.round(num(c.offset, 0))),
         sourceOffset: Math.max(0, num(c.sourceOffset, 0)),
         gain: num(c.gain, 0.8, 0, 1),
@@ -253,6 +307,8 @@ export function fromDoc(doc: ProjectDoc): ProjectData {
       : null
 
   return {
+    automations,
+    controllers: readControllers(raw.controllers),
     mixer,
     tracks,
     clips,

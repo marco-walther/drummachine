@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { ParamMenu } from '@/components/ParamMenu'
 import { cn } from '@/lib/utils'
 
 export interface KnobProps {
@@ -14,6 +15,8 @@ export interface KnobProps {
   label: string
   format?(value: number): string
   className?: string
+  /** automatable parameter: right-click offers automation clip / controller link */
+  param?: string
 }
 
 const SWEEP = 135 // degrees each side of 12 o'clock
@@ -42,7 +45,8 @@ export function Knob({
   size = 22,
   label,
   format,
-  className
+  className,
+  param
 }: KnobProps) {
   const drag = useRef<{ y: number; v: number } | null>(null)
   const range = max - min
@@ -55,6 +59,7 @@ export function Knob({
   const text = `${label}: ${format ? format(value) : value.toFixed(2)}`
 
   return (
+    <ParamMenu param={param}>
     <svg
       width={size}
       height={size}
@@ -98,5 +103,6 @@ export function Knob({
       />
       <line x1={c} y1={c} x2={px} y2={py} stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
     </svg>
+    </ParamMenu>
   )
 }

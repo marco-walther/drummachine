@@ -69,6 +69,24 @@ describe('project file round trip', () => {
     expect(back.songMode).toBe(false)
   })
 
+  it('keeps automation clips + curves and controllers; drops unused curves', () => {
+    const p = sampleProject()
+    p.automations = {
+      a1: { id: 'a1', name: 'Filter sweep', targets: ['mix.1.volume'], points: [{ t: 0, v: 0.2 }, { t: 384, v: 0.9 }], smooth: true },
+      orphan: { id: 'orphan', name: 'x', targets: [], points: [], smooth: false }
+    }
+    p.clips = [makeClip({ trackId: p.tracks[3].id, kind: 'automation', automationId: 'a1', start: 0, length: 384 })]
+    p.controllers = [
+      { id: 'l', kind: 'lfo', name: 'LFO 1', enabled: true, targets: ['mix.2.pan'], shape: 'triangle', sync: true, rate: 2, depth: 0.7, center: 0.4 },
+      { id: 'k', kind: 'peak', name: 'Peak 1', enabled: false, targets: [], source: 'mix.1', base: 1, amount: -0.5, release: 0.3 }
+    ]
+    const back = fromDoc(JSON.parse(JSON.stringify(toDoc(p))))
+    expect(Object.keys(back.automations)).toEqual(['a1'])
+    expect(back.automations.a1).toEqual(p.automations.a1)
+    expect(back.clips).toEqual(p.clips)
+    expect(back.controllers).toEqual(p.controllers)
+  })
+
   it('keeps the mixer and refuses looping sends from a file', () => {
     const p = sampleProject()
     p.mixer[1].fx.push({ id: 'f1', type: 'delay', enabled: false, params: { time: 0.25, feedback: 0.5, mix: 0.4 } })

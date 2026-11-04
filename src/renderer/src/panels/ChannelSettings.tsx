@@ -160,11 +160,11 @@ function InstrumentControls({ channel }: { channel: Channel }) {
   return (
     <Section title="SHAPE">
       <div className="flex flex-wrap gap-2">
-        <LabeledKnob caption="Attack" label="Attack" min={0.001} max={2} value={params.attack} defaultValue={d.attack} onChange={(v) => set(channel.id, { attack: v })} format={seconds} />
-        <LabeledKnob caption="Release" label="Release" min={0.01} max={4} value={params.release} defaultValue={d.release} onChange={(v) => set(channel.id, { release: v })} format={seconds} />
-        <LabeledKnob caption="Bright" label="Brightness" value={params.brightness} defaultValue={d.brightness} onChange={(v) => set(channel.id, { brightness: v })} format={(v) => `${Math.round(v * 100)}%`} />
+        <LabeledKnob caption="Attack" label="Attack" param={`inst.${channel.id}.attack`} min={0.001} max={2} value={params.attack} defaultValue={d.attack} onChange={(v) => set(channel.id, { attack: v })} format={seconds} />
+        <LabeledKnob caption="Release" label="Release" param={`inst.${channel.id}.release`} min={0.01} max={4} value={params.release} defaultValue={d.release} onChange={(v) => set(channel.id, { release: v })} format={seconds} />
+        <LabeledKnob caption="Bright" label="Brightness" param={`inst.${channel.id}.brightness`} value={params.brightness} defaultValue={d.brightness} onChange={(v) => set(channel.id, { brightness: v })} format={(v) => `${Math.round(v * 100)}%`} />
         {kind === 'bass' && (
-          <LabeledKnob caption="Glide" label="Glide" min={0} max={0.4} value={params.glide} defaultValue={d.glide} onChange={(v) => set(channel.id, { glide: v })} format={seconds} />
+          <LabeledKnob caption="Glide" label="Glide" param={`inst.${channel.id}.glide`} min={0} max={0.4} value={params.glide} defaultValue={d.glide} onChange={(v) => set(channel.id, { glide: v })} format={seconds} />
         )}
       </div>
     </Section>

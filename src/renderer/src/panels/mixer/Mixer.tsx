@@ -6,6 +6,7 @@ import { meterLevels } from '@/audio/mixer-engine'
 import { insertDefaultVolume, MAX_FX, sendTargets } from '@/audio/mixer-graph'
 import { gainToDb } from '@/audio/timing'
 import { Knob } from '@/components/Knob'
+import { ParamMenu } from '@/components/ParamMenu'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,15 +131,17 @@ function Strip({ index, insert, level, selected, inputs }: { index: number; inse
           {insert.name}
         </span>
       )}
-      <Knob label={`${insert.name} pan`} size={22} bipolar min={-1} max={1} defaultValue={0} value={insert.pan} onChange={(v) => updateInsert(index, { pan: v })} format={(v) => (Math.abs(v) < 0.01 ? 'C' : `${Math.round(Math.abs(v) * 100)}${v < 0 ? 'L' : 'R'}`)} />
+      <Knob label={`${insert.name} pan`} param={`mix.${index}.pan`} size={22} bipolar min={-1} max={1} defaultValue={0} value={insert.pan} onChange={(v) => updateInsert(index, { pan: v })} format={(v) => (Math.abs(v) < 0.01 ? 'C' : `${Math.round(Math.abs(v) * 100)}${v < 0 ? 'L' : 'R'}`)} />
       <div className="flex min-h-0 flex-1 items-stretch gap-1.5">
         <Meter level={insert.muted ? 0 : level} />
-        <Fader
-          value={insert.volume}
-          unity={insertDefaultVolume(index === 0)}
-          onChange={(v) => updateInsert(index, { volume: v })}
-          label={`${insert.name} volume`}
-        />
+        <ParamMenu param={`mix.${index}.volume`}>
+          <Fader
+            value={insert.volume}
+            unity={insertDefaultVolume(index === 0)}
+            onChange={(v) => updateInsert(index, { volume: v })}
+            label={`${insert.name} volume`}
+          />
+        </ParamMenu>
       </div>
       <span className="font-mono text-[9.5px] text-faint">{formatDb(insert.volume)}</span>
       <button
@@ -173,14 +176,24 @@ function Meter({ level }: { level: number }) {
   )
 }
 
-/** Vertical fader: drag (Shift = fine), wheel, double-click resets to the default. */
-function Fader({ value, unity, onChange, label }: { value: number; unity: number; onChange(v: number): void; label: string }) {
+/**
+ * Vertical fader: drag (Shift = fine), wheel, double-click resets to the default.
+ * Extra props (e.g. the right-click menu's handlers) are passed to the element.
+ */
+function Fader({
+  value,
+  unity,
+  onChange,
+  label,
+  ...rest
+}: { value: number; unity: number; onChange(v: number): void; label: string } & Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'>) {
   const MAX = 1.25
   const ref = useRef<HTMLDivElement>(null)
   const drag = useRef<{ y: number; v: number } | null>(null)
   const norm = value / MAX
   return (
     <div
+      {...rest}
       ref={ref}
       role="slider"
       aria-label={label}
@@ -372,6 +385,7 @@ function FxRow({ index, slot, position, count }: { index: number; slot: FxSlot; 
             <div key={key} className="flex w-14 flex-col items-center gap-0.5">
               <Knob
                 label={p.label}
+                param={`fx.${index}.${slot.id}.${key}`}
                 size={26}
                 min={0}
                 max={1}

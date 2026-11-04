@@ -14,6 +14,8 @@ import { ChannelSettings } from '@/panels/ChannelSettings'
 import { PianoRoll } from '@/panels/piano-roll/PianoRoll'
 import { Playlist } from '@/panels/playlist/Playlist'
 import { Mixer } from '@/panels/mixer/Mixer'
+import { AutomationEditor } from '@/panels/AutomationEditor'
+import { Controllers } from '@/panels/Controllers'
 import { dockBack, popOut, restoreLayout, scheduleSave, useWorkspace, type PanelId } from './layout'
 import { registerWindow } from './windows'
 
@@ -25,7 +27,9 @@ const components: Record<PanelId, React.FunctionComponent<IDockviewPanelProps>> 
   playlist: () => <Playlist />,
   browser: () => <Browser />,
   channel: () => <ChannelSettings />,
-  mixer: () => <Mixer />
+  mixer: () => <Mixer />,
+  automation: () => <AutomationEditor />,
+  controllers: () => <Controllers />
 }
 
 const unregister = new Map<Window, () => void>()

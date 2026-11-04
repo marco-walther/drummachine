@@ -273,6 +273,7 @@ const ChannelRow = memo(function ChannelRow({
         />
         <Knob
           label={`${ch.name} pan`}
+          param={`ch.${ch.id}.pan`}
           bipolar
           min={-1}
           max={1}
@@ -283,6 +284,7 @@ const ChannelRow = memo(function ChannelRow({
         />
         <Knob
           label={`${ch.name} volume`}
+          param={`ch.${ch.id}.volume`}
           defaultValue={0.78}
           value={ch.volume}
           onChange={(v) => updateChannel(ch.id, { volume: v })}

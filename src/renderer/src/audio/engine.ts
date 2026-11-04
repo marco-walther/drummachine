@@ -5,6 +5,7 @@ import { useTransportUi } from '@/state/transport-ui'
 import { PPQ, ROOT_KEY, STEP_TICKS, type Channel, type Clip, type Note, type ProjectData } from '@/state/types'
 import { isSilent, noteCutoffHz } from './mixing'
 import { insertInput, syncMixer } from './mixer-engine'
+import { applyAutomation, connectStrips, endAutomation, startControllers } from './modulator'
 import { ensureSamples } from './samples'
 import { audioClipStarts, songNoteEvents, songTickAt } from './song'
 import { usePianoRollUi } from '@/panels/piano-roll/ui-state'
@@ -175,6 +176,7 @@ function tick(time: number) {
     for (const s of audioClipStarts(state.clips, state.tracks, songTick, STEP_TICKS, fresh)) {
       startAudioClip(s.clip, time + s.delay * spt, s.into, spt)
     }
+    applyAutomation(songTick, STEP_TICKS, time, spt)
     // step lights in the rack/piano roll: the current pattern, if a clip of it is playing
     const clip = state.clips.find(
       (c) => c.kind === 'pattern' && c.patternId === state.currentPatternId && songTick >= c.start && songTick < c.start + c.length
@@ -256,6 +258,11 @@ export const engine = {
     setTimeout(() => warm.dispose(), 5000)
     sync(useProject.getState())
     useProject.subscribe((s) => sync(s))
+    connectStrips((id) => {
+      const s = strips.get(id)
+      return s && { channel: s.channel, voice: s.voice, silent: s.applied.silent }
+    })
+    startControllers()
   },
 
   /** Start playback; `countInBars` > 0 clicks the metronome first (used when recording from stopped). */
@@ -286,6 +293,7 @@ export const engine = {
     repeatId = null
     t.cancel(0)
     stopAudioClips()
+    endAutomation()
     countInSteps = 0
     useTransportUi.setState({ playing: false, step: -1, songTick: -1 })
   },

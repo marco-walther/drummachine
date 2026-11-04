@@ -11,8 +11,14 @@ import {
   type DrumPreset,
   type PlaylistTrack,
   type InstrumentKind,
+  type Automation,
+  type AutomationPoint,
+  type Controller,
   type InstrumentParams,
+  type LfoController,
   type MixerInsert,
+  type ParamRef,
+  type PeakController,
   type MixerSend,
   type Note,
   type Pattern,
@@ -27,6 +33,8 @@ export const uid = (): string => crypto.randomUUID().slice(0, 8)
  * (selectedChannelId is view state and deliberately not listed.)
  */
 export const SAVED_KEYS = [
+  'automations',
+  'controllers',
   'mixer',
   'samples',
   'tracks',
@@ -159,6 +167,8 @@ export function initialProject(): ProjectData {
   )
   const pattern = makePattern('Pattern 1')
   return {
+    automations: {},
+    controllers: [],
     mixer: defaultMixer(),
     samples: {},
     tracks: Array.from({ length: 8 }, (_, i) => makeTrack(`Track ${i + 1}`)),
@@ -238,11 +248,24 @@ export interface ProjectActions {
   addSend(from: number, to: number, sidechain?: boolean): boolean
   updateSend(from: number, target: number, patch: Partial<Pick<MixerSend, 'amount' | 'sidechain'>>): void
   removeSend(from: number, target: number): void
+  // automation & controllers
+  /** New automation clip for `ref` at `start`, flat at `value`; placed on a free Playlist track. Returns its automation id. */
+  createAutomation(ref: ParamRef, name: string, value: number, start: number): string
+  updateAutomation(id: string, patch: Partial<Pick<Automation, 'name' | 'smooth'>>): void
+  setAutomationPoints(id: string, points: AutomationPoint[]): void
+  linkAutomation(id: string, ref: ParamRef): void
+  unlinkAutomation(id: string, ref: ParamRef): void
+  addController(kind: Controller['kind']): string
+  updateController(id: string, patch: Partial<Omit<LfoController, 'id' | 'kind'>> | Partial<Omit<PeakController, 'id' | 'kind'>>): void
+  removeController(id: string): void
+  linkController(id: string, ref: ParamRef): void
+  unlinkController(id: string, ref: ParamRef): void
 }
 
 export type ProjectStore = ProjectData & ProjectActions
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+const BAR = 16 * STEP_TICKS
 
 export const useProject = create<ProjectStore>()(
   immer((set, get) => {
@@ -518,6 +541,88 @@ export const useProject = create<ProjectStore>()(
         set((s) => {
           const ins = s.mixer[from]
           if (ins) ins.sends = ins.sends.filter((x) => x.target !== target)
+        }),
+
+      createAutomation: (ref, name, value, start) => {
+        const id = uid()
+        const length = BAR * 4
+        set((s) => {
+          s.automations[id] = {
+            id,
+            name,
+            targets: [ref],
+            smooth: false,
+            points: [
+              { t: 0, v: value },
+              { t: length, v: value }
+            ]
+          }
+          // a track with nothing in [start, start+length), preferring the lowest
+          const free = s.tracks.find((t) => !s.clips.some((c) => c.trackId === t.id && c.start < start + length && c.start + c.length > start))
+          const track = free ?? (s.tracks.push(makeTrack(`Track ${s.tracks.length + 1}`)), s.tracks[s.tracks.length - 1])
+          s.clips.push(makeClip({ trackId: track.id, kind: 'automation', automationId: id, start, length }))
+        })
+        return id
+      },
+      updateAutomation: (id, patch) =>
+        set((s) => {
+          if (s.automations[id]) Object.assign(s.automations[id], patch)
+        }),
+      setAutomationPoints: (id, points) =>
+        set((s) => {
+          const a = s.automations[id]
+          if (!a) return
+          a.points = [...points]
+            .map((p) => ({ t: Math.max(0, Math.round(p.t)), v: clamp(p.v, 0, 1) }))
+            .sort((x, y) => x.t - y.t)
+        }),
+      linkAutomation: (id, ref) =>
+        set((s) => {
+          const a = s.automations[id]
+          if (a && !a.targets.includes(ref)) a.targets.push(ref)
+        }),
+      unlinkAutomation: (id, ref) =>
+        set((s) => {
+          const a = s.automations[id]
+          if (a) a.targets = a.targets.filter((r) => r !== ref)
+        }),
+      addController: (kind) => {
+        const id = uid()
+        const n = get().controllers.filter((c) => c.kind === kind).length + 1
+        set((s) => {
+          s.controllers.push(
+            kind === 'lfo'
+              ? { id, kind, name: `LFO ${n}`, enabled: true, targets: [], shape: 'sine', sync: true, rate: 4, depth: 0.5, center: 0.5 }
+              : { id, kind, name: `Peak ${n}`, enabled: true, targets: [], source: `ch.${s.channels[0]?.id ?? ''}`, base: 1, amount: -0.8, release: 0.2 }
+          )
+        })
+        return id
+      },
+      updateController: (id, patch) =>
+        set((s) => {
+          const c = s.controllers.find((x) => x.id === id)
+          if (!c) return
+          Object.assign(c, patch)
+          if (c.kind === 'lfo') {
+            c.rate = clamp(c.rate, c.sync ? 0.25 : 0.01, c.sync ? 64 : 20)
+            c.depth = clamp(c.depth, 0, 1)
+            c.center = clamp(c.center, 0, 1)
+          } else {
+            c.base = clamp(c.base, 0, 1)
+            c.amount = clamp(c.amount, -1, 1)
+            c.release = clamp(c.release, 0.01, 2)
+          }
+        }),
+      removeController: (id) => set((s) => void (s.controllers = s.controllers.filter((c) => c.id !== id))),
+      linkController: (id, ref) =>
+        set((s) => {
+          const c = s.controllers.find((x) => x.id === id)
+          if (c && !c.targets.includes(ref)) c.targets.push(ref)
+        }),
+      unlinkController: (id, ref) =>
+        set((s) => {
+          const c = s.controllers.find((x) => x.id === id)
+          if (c) c.targets = c.targets.filter((r) => r !== ref)
         }),
 
       deletePattern: (id) =>

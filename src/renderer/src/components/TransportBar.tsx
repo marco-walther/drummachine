@@ -122,6 +122,7 @@ export function TransportBar({ theme, setTheme }: { theme: ThemeMode; setTheme(m
         <span className="text-[11px] text-muted">Master</span>
         <Knob
           label="Master volume"
+          param="mix.0.volume"
           size={24}
           value={masterVolume}
           defaultValue={0.8}

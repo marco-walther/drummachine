@@ -128,6 +128,18 @@ export function syncMixer(mixer: MixerInsert[]) {
   mixer.forEach((ins, i) => syncSends(i, ins))
 }
 
+/** An insert's fader params (for automation/controllers): volume in dB, pan -1..1. */
+export function insertParams(index: number): { volume: Tone.Param<'decibels'>; pan: Tone.Param<'audioRange'> } | null {
+  const n = inserts[index]
+  return n ? { volume: n.fader.volume, pan: n.fader.pan } : null
+}
+
+/** Set one effect parameter without touching the saved project (automation/controllers). */
+export function setFxParam(index: number, fxId: string, key: string, value: number) {
+  const entry = inserts[index]?.fx.get(fxId)
+  if (entry) entry.node.update({ ...entry.slot.params, [key]: value })
+}
+
 /** Where a channel (or audio clip) plugs in. Unknown index → Master. */
 export function insertInput(index: number): Tone.Gain {
   return (inserts[index] ?? inserts[0]).input

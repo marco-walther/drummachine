@@ -1,5 +1,7 @@
 import { memo, useMemo, useRef, useState } from 'react'
-import { AudioLines, Grid3x3, MousePointer2, Pencil, Plus, Scissors, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react'
+import { AudioLines, Grid3x3, MousePointer2, Pencil, Plus, Scissors, Spline, Volume2, VolumeX, ZoomIn, ZoomOut } from 'lucide-react'
+import { automationValueAt } from '@/audio/modulation'
+import { useAutomationUi } from '@/components/ParamMenu'
 import { baseName } from '@shared/api'
 import { computePeaks } from '@/audio/peaks'
 import { loadBuffer, useSampleStatus } from '@/audio/samples'
@@ -17,7 +19,7 @@ import { beginGesture, endGesture } from '@/state/history'
 import { makeClip, splitClip, uid, useProject } from '@/state/project'
 import { toast } from '@/state/toasts'
 import { useTransportUi } from '@/state/transport-ui'
-import { PPQ, STEP_TICKS, type Clip, type Pattern, type PlaylistTrack } from '@/state/types'
+import { PPQ, STEP_TICKS, type AutomationPoint, type Clip, type Pattern, type PlaylistTrack } from '@/state/types'
 import { isSampleDrag, readSampleDrop } from '@/workspace/dnd'
 import { showPanel } from '@/workspace/layout'
 import { create } from 'zustand'
@@ -485,10 +487,17 @@ const ClipView = memo(function ClipView({
   pattern?: Pattern
 }) {
   const sample = useProject((s) => (clip.sampleId ? s.samples[clip.sampleId] : undefined))
+  const automation = useProject((s) => (clip.automationId ? s.automations[clip.automationId] : undefined))
   const status = useSampleStatus((s) => (clip.sampleId ? s[clip.sampleId] : undefined))
   const w = Math.max(4, clip.length * zoom - 1)
-  const name = clip.kind === 'pattern' ? (pattern?.name ?? 'Pattern') : (sample?.name ?? 'Audio')
+  const name =
+    clip.kind === 'pattern' ? (pattern?.name ?? 'Pattern') : clip.kind === 'automation' ? (automation?.name ?? 'Automation') : (sample?.name ?? 'Audio')
   const st = useProject.getState()
+  const editCurve = () => {
+    if (!clip.automationId) return
+    useAutomationUi.setState({ editing: clip.automationId })
+    showPanel('automation')
+  }
 
   return (
     <ContextMenu>
@@ -504,11 +513,11 @@ const ClipView = memo(function ClipView({
             if (clip.kind === 'pattern' && clip.patternId) {
               st.selectPattern(clip.patternId)
               showPanel('channelRack')
-            }
+            } else if (clip.kind === 'automation') editCurve()
           }}
         >
           <div className={cn('flex shrink-0 items-center gap-1 truncate px-1.5 leading-[16px]', selected ? 'bg-inv text-inv-ink' : 'bg-card')}>
-            {clip.kind === 'pattern' ? <Grid3x3 size={10} /> : <AudioLines size={10} />}
+            {clip.kind === 'pattern' ? <Grid3x3 size={10} /> : clip.kind === 'automation' ? <Spline size={10} /> : <AudioLines size={10} />}
             <span className="truncate">{name}</span>
             {clip.kind === 'audio' && w > 110 && (clip.pitch !== 0 || clip.rate !== 1) && (
               <span className="ml-auto shrink-0 font-mono opacity-70">
@@ -521,12 +530,14 @@ const ClipView = memo(function ClipView({
           <div className="relative min-h-0 flex-1">
             {clip.kind === 'pattern' && pattern && <PatternPreview clip={clip} pattern={pattern} width={w} zoom={zoom} />}
             {clip.kind === 'audio' && <Waveform clip={clip} width={w} missing={status === 'missing'} />}
+            {clip.kind === 'automation' && automation && <CurvePreview clip={clip} points={automation.points} smooth={automation.smooth} width={w} />}
           </div>
           <span className="absolute top-0 right-0 bottom-0 w-1 cursor-ew-resize" />
           <span className="absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize" />
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {clip.kind === 'automation' && <ContextMenuItem onSelect={editCurve}>Edit curve</ContextMenuItem>}
         {clip.kind === 'pattern' && (
           <ContextMenuItem
             onSelect={() => {
@@ -600,6 +611,24 @@ function PatternPreview({ clip, pattern, width, zoom }: { clip: Clip; pattern: P
       {marks.map((m, i) => (
         <rect key={i} x={m.x} y={`${4 + m.y * 70}%`} width={m.w} height={2} fill="currentColor" opacity={0.7} />
       ))}
+    </svg>
+  )
+}
+
+function CurvePreview({ clip, points, smooth, width }: { clip: Clip; points: AutomationPoint[]; smooth: boolean; width: number }) {
+  const d = useMemo(() => {
+    const n = Math.max(2, Math.floor(width / 3))
+    let path = ''
+    for (let i = 0; i <= n; i++) {
+      const t = clip.offset + (i / n) * clip.length
+      const v = automationValueAt(points, t, smooth) ?? 0.5
+      path += `${i ? 'L' : 'M'}${((i / n) * width).toFixed(1)},${(92 - v * 84).toFixed(1)}`
+    }
+    return path
+  }, [clip.offset, clip.length, points, smooth, width])
+  return (
+    <svg className="absolute inset-0 h-full" width={width} viewBox={`0 0 ${width} 100`} preserveAspectRatio="none">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
     </svg>
   )
 }

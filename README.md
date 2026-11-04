@@ -34,6 +34,8 @@ npm run build
 | PAT / SONG | top bar: PAT loops the current pattern, SONG plays the Playlist |
 | Playlist (F5) | draw: click a track to place the current pattern; drag = move (across tracks), drag edges = resize/trim, scissors = slice, Ctrl+D duplicate, Delete; right-click a clip for options. Ruler: click = play from here, drag = loop region, right-click = clear loop. Drop audio from the Browser/Explorer to add audio clips |
 | Audio clips | right-click: Resample (speed changes pitch) or Stretch (speed and pitch independent), stretch to fit the clip, speed ×2/×½, pitch ±1 / ±12 |
+| Automation | right-click a knob or fader → **Create automation clip**: a curve clip appears in the Playlist (plays in SONG). Double-click it to edit: click = point, drag = move, right-click = delete, Smooth toggle, link more parameters |
+| Controllers | right-click a knob → **Link to controller**, or the Controllers panel: **LFO** (sine/triangle/square/saw/random, in beats or Hz, depth, center) and **Peak** (follows a channel's or insert's level, e.g. duck a pad with the kick) |
 | Undo / redo | **Ctrl+Z** / **Ctrl+Y** (or Ctrl+Shift+Z); drags and knob turns count as one step |
 | Samples as instruments | in the Channel panel: **Detect** the root note, choose **Note length** playback, then play the sample at any pitch (e.g. a guitar note) |
 
