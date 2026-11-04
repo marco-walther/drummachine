@@ -6,7 +6,16 @@ import { create } from 'zustand'
  * and the commands the UI/shortcuts call (show, pop out, dock back, reset).
  */
 
-export type PanelId = 'browser' | 'channelRack' | 'channel' | 'pianoRoll' | 'playlist' | 'mixer' | 'automation' | 'controllers'
+export type PanelId =
+  | 'browser'
+  | 'channelRack'
+  | 'channel'
+  | 'pianoRoll'
+  | 'patcher'
+  | 'playlist'
+  | 'mixer'
+  | 'automation'
+  | 'controllers'
 
 export const PANELS: Record<PanelId, { title: string; shortcut?: string }> = {
   playlist: { title: 'Playlist', shortcut: 'F5' },
@@ -15,6 +24,7 @@ export const PANELS: Record<PanelId, { title: string; shortcut?: string }> = {
   browser: { title: 'Browser', shortcut: 'F8' },
   mixer: { title: 'Mixer', shortcut: 'F9' },
   channel: { title: 'Channel' },
+  patcher: { title: 'Patcher' },
   automation: { title: 'Automation' },
   controllers: { title: 'Controllers' }
 }
@@ -45,6 +55,7 @@ export function applyDefaultLayout(a: DockviewApi) {
   a.clear()
   const rack = add(a, 'channelRack')
   add(a, 'pianoRoll', { position: { referencePanel: 'channelRack', direction: 'within' }, inactive: true })
+  add(a, 'patcher', { position: { referencePanel: 'channelRack', direction: 'within' }, inactive: true })
   add(a, 'playlist', { position: { referencePanel: 'channelRack', direction: 'below' } })
   add(a, 'mixer', { position: { referencePanel: 'playlist', direction: 'within' }, inactive: true })
   add(a, 'automation', { position: { referencePanel: 'playlist', direction: 'within' }, inactive: true })

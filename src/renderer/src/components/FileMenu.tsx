@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useProjectFile } from '@/state/file'
 import { redo, undo } from '@/state/history'
+import { useExport } from '@/workspace/export'
 import {
   importSamples,
   newProject,
@@ -82,6 +83,10 @@ export function FileMenu({ className }: { className: string }) {
         <DropdownMenuItem onSelect={() => void importSamples()}>
           Import samples or tracks…
           <DropdownMenuShortcut>Ctrl+I</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setTimeout(() => useExport.setState({ dialog: true }), 0)}>
+          Export audio (WAV)…
+          <DropdownMenuShortcut>Ctrl+E</DropdownMenuShortcut>
         </DropdownMenuItem>
         {autosave && (
           <>

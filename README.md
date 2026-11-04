@@ -13,7 +13,12 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run dist       # Windows installer → release/Drummachine-Setup-<version>.exe
 ```
+
+The installer is unsigned, so Windows SmartScreen asks once ("More info → Run anyway"). It
+registers `.dmproj` files: double-clicking a project opens it, in the running window if the
+app is already open.
 
 ## Controls
 
@@ -38,14 +43,16 @@ npm run build
 | Controllers | right-click a knob → **Link to controller**, or the Controllers panel: **LFO** (sine/triangle/square/saw/random, in beats or Hz, depth, center) and **Peak** (follows a channel's or insert's level, e.g. duck a pad with the kick) |
 | Undo / redo | **Ctrl+Z** / **Ctrl+Y** (or Ctrl+Shift+Z); drags and knob turns count as one step |
 | Samples as instruments | in the Channel panel: **Detect** the root note, choose **Note length** playback, then play the sample at any pitch (e.g. a guitar note) |
-
-Saving copies every sample a project uses into a `samples/` folder next to the `.dmproj` file, so a project folder can be moved or shared as a whole. Unsaved work is autosaved every minute (File → Recover autosave).
+| Patcher | **Add channel → Patcher**, or **Patcher** in the Channel panel. Layer built-in generators (each with level, transpose and key range, so layers can split the keyboard) and run them through effects: drag a node's right port onto another node, chains end at **Output**. Right-click a cable to remove it, Delete removes the selected node. Patcher knobs can be automated and linked to controllers |
+| Export (**Ctrl+E**, File → Export audio) | renders the current pattern or the song (or the loop region) to WAV, 16- or 24-bit, with an optional release tail; **stems** writes one file per mixer insert. Rendering happens in real time through the real mixer, so effects, automation and controllers sound exactly as when you play |
 | BPM, mixer # | drag up/down (Shift = fine), double-click to type |
 | Knobs | drag up/down (Shift = fine), wheel, double-click to reset |
 | Step grid | click toggles, drag paints, right-click/drag erases |
 | Channel LED | click mutes, right-click solos |
 | Channel name | click selects + previews, double-click renames, drag to reorder, right-click for menu (fill, clear, delete…) |
 | Pattern menu | new / clone / rename / delete; double-click the name to rename |
+
+Saving copies every sample a project uses into a `samples/` folder next to the `.dmproj` file, so a project folder can be moved or shared as a whole. Unsaved work is autosaved every minute (File → Recover autosave).
 
 ## Theme
 

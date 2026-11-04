@@ -15,6 +15,12 @@ const api: Api = {
     reveal: (path) => ipcRenderer.send('library:reveal', path)
   },
 
+  export: {
+    pickWavPath: (name) => ipcRenderer.invoke('export:pick-wav-path', name),
+    writeWav: (path, data) => ipcRenderer.invoke('export:write-wav', path, data),
+    reveal: (path) => ipcRenderer.send('export:reveal', path)
+  },
+
   project: {
     pickSavePath: (name) => ipcRenderer.invoke('project:pick-save-path', name),
     pickOpenPath: () => ipcRenderer.invoke('project:pick-open-path'),
@@ -31,7 +37,13 @@ const api: Api = {
       ipcRenderer.on('project:save-before-quit', listener)
       return () => ipcRenderer.removeListener('project:save-before-quit', listener)
     },
-    quitNow: () => ipcRenderer.send('project:quit-now')
+    quitNow: () => ipcRenderer.send('project:quit-now'),
+    takeLaunchFile: () => ipcRenderer.invoke('project:take-launch-file'),
+    onOpenFile: (cb) => {
+      const listener = (_e: Electron.IpcRendererEvent, path: string) => cb(path)
+      ipcRenderer.on('project:open-file', listener)
+      return () => ipcRenderer.removeListener('project:open-file', listener)
+    }
   }
 }
 

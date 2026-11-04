@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs'
 import { join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell } from 'electron'
+import { registerExportIpc } from './export'
 import { registerFileIpc } from './files'
 import { projectState, registerProjectIpc } from './project'
 
@@ -19,6 +21,32 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const bg = () => (nativeTheme.shouldUseDarkColors ? '#0b0b0b' : '#efefef')
+
+// One app instance: opening a .dmproj while running hands it to the open window.
+// (Installed app only: a dev session shares its user data and must not capture it.)
+if (app.isPackaged && !app.requestSingleInstanceLock()) app.exit(0)
+
+/** A .dmproj passed on the command line (Explorer "Open with" / double-click). */
+const projectArg = (argv: string[]) => argv.slice(1).find((a) => /\.dmproj$/i.test(a) && existsSync(a)) ?? null
+
+let mainWindow: BrowserWindow | null = null
+/** Launch file, handed over once the renderer asks for it. */
+let pendingOpen = projectArg(process.argv)
+
+app.on('second-instance', (_e, argv) => {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+  const file = projectArg(argv)
+  if (file) win.webContents.send('project:open-file', file)
+})
+
+ipcMain.handle('project:take-launch-file', () => {
+  const file = pendingOpen
+  pendingOpen = null
+  return file
+})
 
 /** Popout BrowserWindows by window.open target name (dockview: `<id>-<group>`). */
 const popouts = new Map<string, BrowserWindow>()
@@ -53,6 +81,7 @@ function createMainWindow(): BrowserWindow {
     }
   })
 
+  mainWindow = win
   win.once('ready-to-show', () => win.show())
 
   // Never navigate away from the app (e.g. a file dropped outside a drop zone).
@@ -150,6 +179,7 @@ ipcMain.on('popout:set-on-top', (_e, frameName: unknown, onTop: unknown) => {
 app.whenReady().then(() => {
   registerFileIpc()
   registerProjectIpc()
+  registerExportIpc()
   // The default menu's Ctrl+R / Ctrl+W would reload or close and lose work.
   if (!isDev) Menu.setApplicationMenu(null)
 

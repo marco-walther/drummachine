@@ -1,0 +1,28 @@
+# Windows installer (npm run dist). Everything the app runs is bundled by
+# electron-vite into out/, so no node_modules are shipped.
+appId: com.marcowalther.drummachine
+productName: Drummachine
+copyright: Copyright © 2026 marco-walther
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Drummachine
+  artifactName: Drummachine-Setup-${version}.${ext}
+fileAssociations:
+  - ext: dmproj
+    name: Drummachine project
+    description: Drummachine project
+    role: Editor

@@ -138,6 +138,17 @@ let prevSongTick = -1
 
 /** Steps of metronome-only count-in before the music starts (record from stopped). */
 let countInSteps = 0
+
+/** Export can force song/pattern mode and ignore the loop without touching the project. */
+export interface PlayOptions {
+  songMode?: boolean
+  /** song position to start from (ticks) */
+  start?: number
+  noLoop?: boolean
+  /** render length in ticks: nothing at/after it is scheduled (export) */
+  length?: number
+}
+let playOverride: PlayOptions = {}
 let metronome: Tone.Synth | null = null
 
 /** Metronome click: higher on the first beat of a bar. Straight to the speakers (not the mix). */
@@ -161,13 +172,17 @@ function tick(time: number) {
     return
   }
   const n = raw - countInSteps
+  // exporting: the music ends exactly at the render length (the look-ahead must not sneak in the next bar)
+  if (playOverride.length !== undefined && n * STEP_TICKS >= playOverride.length) return
   // metronome while recording
   if (useTransportUi.getState().recording && n % 4 === 0) click(time, n % 16 === 0)
   let step: number
   let songTick = -1
+  const songMode = playOverride.songMode ?? state.songMode
+  const loop = playOverride.noLoop ? null : state.loop
 
-  if (state.songMode) {
-    songTick = songTickAt(songStart, n, STEP_TICKS, state.loop)
+  if (songMode) {
+    songTick = songTickAt(songStart, n, STEP_TICKS, loop)
     const fresh = songTick !== prevSongTick + STEP_TICKS
     prevSongTick = songTick
     for (const e of songNoteEvents(state.clips, state.tracks, state.patterns, songTick)) {
@@ -265,25 +280,33 @@ export const engine = {
     startControllers()
   },
 
-  /** Start playback; `countInBars` > 0 clicks the metronome first (used when recording from stopped). */
-  async play(countInBars = 0) {
+  /**
+   * Start playback; `countInBars` > 0 clicks the metronome first (used when
+   * recording from stopped). Returns the audio time the music starts at.
+   */
+  async play(countInBars = 0, options: PlayOptions = {}): Promise<number> {
     await Tone.start()
-    if (useTransportUi.getState().playing) return
+    if (useTransportUi.getState().playing) return Tone.now()
     const t = transport()
     absStep = 0
     countInSteps = Math.max(0, countInBars) * 16
+    playOverride = options
     // song mode starts at the loop start, else at the song position marker
     const st = useProject.getState()
-    songStart = st.loop ? st.loop.start : useTransportUi.getState().songPosition
+    const songMode = options.songMode ?? st.songMode
+    const loop = options.noLoop ? null : st.loop
+    songStart = options.start ?? (loop ? loop.start : useTransportUi.getState().songPosition)
     prevSongTick = -1
     t.position = 0
     repeatId = t.scheduleRepeat(tick, '16n', 0)
-    t.start('+0.05')
+    const startAt = Tone.now() + 0.05
+    t.start(startAt)
     useTransportUi.setState({
       playing: true,
-      step: st.songMode || countInSteps ? -1 : 0,
-      songTick: st.songMode && !countInSteps ? songStart : -1
+      step: songMode || countInSteps ? -1 : 0,
+      songTick: songMode && !countInSteps ? songStart : -1
     })
+    return startAt + countInSteps * STEP_TICKS * secondsPerTick(st.bpm)
   },
 
   stop() {
@@ -295,6 +318,7 @@ export const engine = {
     stopAudioClips()
     endAutomation()
     countInSteps = 0
+    playOverride = {}
     useTransportUi.setState({ playing: false, step: -1, songTick: -1 })
   },
 

@@ -34,10 +34,58 @@ export interface SampleSource {
   release: number
 }
 
+/** Patcher: a sound generator in the graph. Every note goes to every generator in key range. */
+export interface PatchInstNode {
+  id: string
+  kind: 'inst'
+  instrument: InstrumentKind
+  params: InstrumentParams
+  /** 0..1.5 output gain */
+  level: number
+  /** semitones added to every note */
+  transpose: number
+  /** key range (inclusive) this generator answers to: lets layers split the keyboard */
+  lo: number
+  hi: number
+  x: number
+  y: number
+}
+/** Patcher: an effect in the graph (same effects as the Mixer). */
+export interface PatchFxNode {
+  id: string
+  kind: 'fx'
+  fx: FxSlotType
+  params: Record<string, number>
+  x: number
+  y: number
+}
+/** Patcher: the channel output (exactly one, id PATCH_OUT). */
+export interface PatchOutNode {
+  id: string
+  kind: 'out'
+  x: number
+  y: number
+}
+export type PatchNode = PatchInstNode | PatchFxNode | PatchOutNode
+
+/** Audio from `from`'s output into `to`'s input. */
+export interface PatchWire {
+  from: string
+  to: string
+}
+
+/** A channel built from generators and effects wired together (FL "Patcher"). */
+export interface PatcherSource {
+  type: 'patcher'
+  nodes: PatchNode[]
+  wires: PatchWire[]
+}
+
 export type ChannelSource =
   | { type: 'synth'; preset: DrumPreset }
   | SampleSource
   | { type: 'instrument'; kind: InstrumentKind; params: InstrumentParams }
+  | PatcherSource
 
 export interface Channel {
   id: string
@@ -103,6 +151,7 @@ export interface PlaylistTrack {
  *   inst.<channelId>.attack|release|brightness|glide
  *   mix.<insert>.volume | mix.<insert>.pan
  *   fx.<insert>.<fxId>.<param>
+ *   patch.<channelId>.<nodeId>.<param>   (Patcher generator/effect)
  * Values travel normalized 0..1 and are mapped to the parameter's range.
  */
 export type ParamRef = string

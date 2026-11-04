@@ -1,6 +1,8 @@
 import * as Tone from 'tone'
 import { ROOT_KEY, type ChannelSource, type DrumPreset, type SampleSource } from '@/state/types'
+import { patchKey } from '@/state/patch'
 import { createInstrumentVoice } from './instruments'
+import { createPatcherVoice } from './patcher'
 import { monotonic, ratio } from './util'
 
 /**
@@ -188,6 +190,8 @@ export function createVoice(source: ChannelSource): Voice {
       return sampleVoice(source)
     case 'instrument':
       return createInstrumentVoice(source.kind, source.params)
+    case 'patcher':
+      return createPatcherVoice(source)
   }
 }
 
@@ -200,5 +204,7 @@ export function sourceKey(source: ChannelSource): string {
       return `sample:${source.sampleId}`
     case 'instrument':
       return `inst:${source.kind}`
+    case 'patcher':
+      return patchKey(source)
   }
 }

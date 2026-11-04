@@ -23,8 +23,12 @@ import {
   type Note,
   type Pattern,
   type ProjectData,
+  type PatchInstNode,
+  type PatchNode,
   type SampleSource
 } from './types'
+import { INSTRUMENT_DEFAULTS, INSTRUMENT_NAMES, clampInstrumentParams } from './instrument-defs'
+import { canConnect, MAX_PATCH_NODES, PATCH_OUT, type ConnectResult } from './patch'
 
 export const uid = (): string => crypto.randomUUID().slice(0, 8)
 
@@ -65,21 +69,7 @@ export const PRESET_NAMES: Record<DrumPreset, string> = {
   tom: 'Tom'
 }
 
-export const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
-  piano: 'Piano',
-  synth: 'Synth',
-  bass: 'Bass',
-  pad: 'Pad',
-  pluck: 'Pluck'
-}
-
-export const INSTRUMENT_DEFAULTS: Record<InstrumentKind, InstrumentParams> = {
-  piano: { attack: 0.002, release: 1.2, brightness: 0.45, glide: 0 },
-  synth: { attack: 0.005, release: 0.25, brightness: 0.6, glide: 0 },
-  bass: { attack: 0.003, release: 0.12, brightness: 0.35, glide: 0.04 },
-  pad: { attack: 0.6, release: 1.8, brightness: 0.4, glide: 0 },
-  pluck: { attack: 0.001, release: 0.6, brightness: 0.6, glide: 0 }
-}
+export { INSTRUMENT_DEFAULTS, INSTRUMENT_NAMES }
 
 export function sampleSource(sampleId: string, partial: Partial<Omit<SampleSource, 'type' | 'sampleId'>> = {}): SampleSource {
   return { type: 'sample', sampleId, root: ROOT_KEY, oneShot: true, attack: 0, release: 0.08, ...partial }
@@ -92,6 +82,7 @@ export function instrumentSource(kind: InstrumentKind): ChannelSource {
 export function sourceName(source: ChannelSource): string {
   if (source.type === 'synth') return PRESET_NAMES[source.preset]
   if (source.type === 'instrument') return INSTRUMENT_NAMES[source.kind]
+  if (source.type === 'patcher') return 'Patcher'
   return 'Sample'
 }
 
@@ -203,6 +194,21 @@ export interface ProjectActions {
   setChannelSource(channelId: string, source: ChannelSource, rename?: boolean): void
   updateSampleSettings(channelId: string, patch: Partial<Omit<SampleSource, 'type' | 'sampleId'>>): void
   updateInstrumentParams(channelId: string, patch: Partial<InstrumentParams>): void
+  // patcher (channel source type 'patcher')
+  /** false when the patch is full or the channel isn't a Patcher */
+  addPatchNode(channelId: string, node: PatchNode): boolean
+  /** position, level, transpose, key range, instrument, params (merged) */
+  updatePatchNode(
+    channelId: string,
+    nodeId: string,
+    patch: Partial<Pick<PatchInstNode, 'x' | 'y' | 'level' | 'transpose' | 'lo' | 'hi' | 'instrument'>> & {
+      params?: Partial<InstrumentParams> | Record<string, number>
+    }
+  ): void
+  /** removes the node and its wires (the output node stays) */
+  removePatchNode(channelId: string, nodeId: string): void
+  connectPatch(channelId: string, from: string, to: string): ConnectResult
+  disconnectPatch(channelId: string, from: string, to: string): void
   /** Add a note to the current pattern (live recording). */
   addNote(channelId: string, note: Note): void
   /** Replace a channel's notes in the current pattern (Piano Roll edits); grows the pattern to fit. */
@@ -323,11 +329,63 @@ export const useProject = create<ProjectStore>()(
         set((s) => {
           const src = s.channels.find((c) => c.id === channelId)?.source
           if (src?.type !== 'instrument') return
-          const p = Object.assign(src.params, patch)
-          p.attack = clamp(p.attack, 0.001, 5)
-          p.release = clamp(p.release, 0.01, 10)
-          p.brightness = clamp(p.brightness, 0, 1)
-          p.glide = clamp(p.glide, 0, 1)
+          src.params = clampInstrumentParams({ ...src.params, ...patch })
+        }),
+      addPatchNode: (channelId, node) => {
+        const src = get().channels.find((c) => c.id === channelId)?.source
+        if (src?.type !== 'patcher' || node.kind === 'out') return false
+        if (src.nodes.filter((n) => n.kind !== 'out').length >= MAX_PATCH_NODES) return false
+        set((s) => {
+          const p = s.channels.find((c) => c.id === channelId)!.source
+          if (p.type === 'patcher') p.nodes.push(node)
+        })
+        return true
+      },
+      updatePatchNode: (channelId, nodeId, patch) =>
+        set((s) => {
+          const src = s.channels.find((c) => c.id === channelId)?.source
+          const n = src?.type === 'patcher' ? src.nodes.find((x) => x.id === nodeId) : undefined
+          if (!n) return
+          if (patch.x !== undefined) n.x = clamp(Math.round(patch.x), 0, 4000)
+          if (patch.y !== undefined) n.y = clamp(Math.round(patch.y), 0, 4000)
+          if (n.kind === 'inst') {
+            if (patch.instrument && patch.instrument !== n.instrument) {
+              n.instrument = patch.instrument
+              n.params = { ...INSTRUMENT_DEFAULTS[patch.instrument] }
+            }
+            if (patch.level !== undefined) n.level = clamp(patch.level, 0, 1.5)
+            if (patch.transpose !== undefined) n.transpose = clamp(Math.round(patch.transpose), -48, 48)
+            if (patch.lo !== undefined) n.lo = clamp(Math.round(patch.lo), 0, n.hi)
+            if (patch.hi !== undefined) n.hi = clamp(Math.round(patch.hi), n.lo, 127)
+            if (patch.params) n.params = clampInstrumentParams({ ...n.params, ...(patch.params as Partial<InstrumentParams>) })
+          } else if (n.kind === 'fx' && patch.params) {
+            const merged = { ...n.params }
+            for (const [k, v] of Object.entries(patch.params)) if (k in merged && Number.isFinite(v)) merged[k] = v
+            n.params = merged
+          }
+        }),
+      removePatchNode: (channelId, nodeId) =>
+        set((s) => {
+          const src = s.channels.find((c) => c.id === channelId)?.source
+          if (src?.type !== 'patcher' || nodeId === PATCH_OUT) return
+          src.nodes = src.nodes.filter((n) => n.id !== nodeId)
+          src.wires = src.wires.filter((w) => w.from !== nodeId && w.to !== nodeId)
+        }),
+      connectPatch: (channelId, from, to) => {
+        const src = get().channels.find((c) => c.id === channelId)?.source
+        if (src?.type !== 'patcher') return 'invalid'
+        const res = canConnect(src, from, to)
+        if (res === 'ok')
+          set((s) => {
+            const p = s.channels.find((c) => c.id === channelId)!.source
+            if (p.type === 'patcher') p.wires.push({ from, to })
+          })
+        return res
+      },
+      disconnectPatch: (channelId, from, to) =>
+        set((s) => {
+          const src = s.channels.find((c) => c.id === channelId)?.source
+          if (src?.type === 'patcher') src.wires = src.wires.filter((w) => !(w.from === from && w.to === to))
         }),
       addNote: (channelId, note) =>
         set((s) => {

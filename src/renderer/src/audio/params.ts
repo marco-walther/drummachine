@@ -1,4 +1,5 @@
 import { FX, formatParam, fromNorm, toNorm, type FxType } from './fx-defs'
+import { INSTRUMENT_NAMES } from '@/state/instrument-defs'
 import type { InstrumentParams, ParamRef, ProjectData } from '@/state/types'
 
 /**
@@ -58,6 +59,35 @@ export function paramInfo(state: State, ref: ParamRef): ParamInfo | null {
       format: (n) => (b === 'brightness' ? pct(n) : `${m.toValue(n).toFixed(2)} s`)
     }
   }
+  if (kind === 'patch') {
+    const ch = state.channels.find((x) => x.id === a)
+    const node = ch?.source.type === 'patcher' ? ch.source.nodes.find((n) => n.id === b) : undefined
+    if (!ch || !node || node.kind === 'out') return null
+    const title = node.kind === 'inst' ? INSTRUMENT_NAMES[node.instrument] : FX[node.fx].label
+    if (node.kind === 'fx') {
+      const def = FX[node.fx].params[c]
+      if (!def) return null
+      return {
+        ref,
+        group: ch.name,
+        label: `${ch.name} ${title} ${def.label.toLowerCase()}`,
+        toValue: (n) => fromNorm(def, n),
+        toNorm: (v) => toNorm(def, v),
+        format: (n) => formatParam(def, fromNorm(def, n))
+      }
+    }
+    if (c === 'level') return { ref, group: ch.name, label: `${ch.name} ${title} level`, ...lin(0, 1.5), format: (n) => pct(n * 1.5) }
+    const r = INST_RANGES[c as keyof InstrumentParams]
+    if (!r) return null
+    const m = lin(r.min, r.max)
+    return {
+      ref,
+      group: ch.name,
+      label: `${ch.name} ${title} ${r.label.toLowerCase()}`,
+      ...m,
+      format: (n) => (c === 'brightness' ? pct(n) : `${m.toValue(n).toFixed(2)} s`)
+    }
+  }
   if (kind === 'mix') {
     const i = Number(a)
     const ins = state.mixer[i]
@@ -98,6 +128,11 @@ export function currentNorm(state: State, ref: ParamRef): number {
   else if (kind === 'inst') {
     const src = state.channels.find((x) => x.id === a)?.source
     v = src?.type === 'instrument' ? src.params[b as keyof InstrumentParams] : undefined
+  } else if (kind === 'patch') {
+    const src = state.channels.find((x) => x.id === a)?.source
+    const node = src?.type === 'patcher' ? src.nodes.find((n) => n.id === b) : undefined
+    if (node?.kind === 'inst') v = c === 'level' ? node.level : node.params[c as keyof InstrumentParams]
+    else if (node?.kind === 'fx') v = node.params[c]
   } else if (kind === 'mix') v = state.mixer[Number(a)]?.[b as 'volume' | 'pan']
   else if (kind === 'fx') v = state.mixer[Number(a)]?.fx.find((f) => f.id === b)?.params[c]
   return v === undefined ? 0.5 : Math.min(1, Math.max(0, info.toNorm(v)))
@@ -109,6 +144,11 @@ export function listParams(state: State): ParamInfo[] {
   for (const ch of state.channels) {
     refs.push(`ch.${ch.id}.volume`, `ch.${ch.id}.pan`)
     if (ch.source.type === 'instrument') for (const k of Object.keys(INST_RANGES)) refs.push(`inst.${ch.id}.${k}`)
+    if (ch.source.type === 'patcher')
+      for (const n of ch.source.nodes) {
+        if (n.kind === 'inst') for (const k of ['level', ...Object.keys(INST_RANGES)]) refs.push(`patch.${ch.id}.${n.id}.${k}`)
+        if (n.kind === 'fx') for (const k of Object.keys(FX[n.fx].params)) refs.push(`patch.${ch.id}.${n.id}.${k}`)
+      }
   }
   state.mixer.forEach((ins, i) => {
     refs.push(`mix.${i}.volume`, `mix.${i}.pan`)

@@ -28,6 +28,7 @@ import {
   selectCurrentPattern,
   useProject
 } from '@/state/project'
+import { defaultPatch } from '@/state/patch'
 import { useTransportUi } from '@/state/transport-ui'
 import type { Channel, DrumPreset, InstrumentKind, Note } from '@/state/types'
 import { SourceIcon } from '@/panels/ChannelSettings'
@@ -145,6 +146,14 @@ export function ChannelRack() {
               ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => void importSamples()}>Your sample or track…</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  addChannel(defaultPatch())
+                  showPanel('patcher')
+                }}
+              >
+                Patcher (layer &amp; chain sounds)
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -140,6 +140,11 @@ export function setFxParam(index: number, fxId: string, key: string, value: numb
   if (entry) entry.node.update({ ...entry.slot.params, [key]: value })
 }
 
+/** Post-fader output of each insert (taps for exporting the mix and stems). */
+export function insertOutputs(): Tone.ToneAudioNode[] {
+  return inserts.map((n) => n.fader)
+}
+
 /** Where a channel (or audio clip) plugs in. Unknown index → Master. */
 export function insertInput(index: number): Tone.Gain {
   return (inserts[index] ?? inserts[0]).input

@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { engine } from '@/audio/engine'
+import { ExportDialog } from '@/components/ExportDialog'
 import { Toasts } from '@/components/Toasts'
+import { useExport } from '@/workspace/export'
 import { TransportBar } from '@/components/TransportBar'
 import { UnsavedDialog } from '@/components/UnsavedDialog'
 import { useTheme } from '@/hooks/use-theme'
@@ -70,6 +72,7 @@ function onKey(e: KeyboardEvent) {
     if (k === 'o') return run(() => openProject())
     if (k === 'n') return run(newProject)
     if (k === 'i') return run(importSamples)
+    if (k === 'e') return run(() => useExport.setState({ dialog: true }))
     return
   }
   if (isTyping(e.target) || e.altKey) return
@@ -111,8 +114,14 @@ export default function App() {
       // closing the window with unsaved changes → main asks → "Save" lands here
       window.api.project.onSaveBeforeQuit(async () => {
         if (await saveProject()) window.api.project.quitNow()
-      })
+      }),
+      // .dmproj double-clicked in Explorer while running
+      window.api.project.onOpenFile((path) => void openProject(path))
     ]
+    // .dmproj the app was launched with
+    void window.api.project.takeLaunchFile().then((path) => {
+      if (path) void openProject(path)
+    })
     const timer = setInterval(() => void autosaveIfDirty(), AUTOSAVE_MS)
 
     // window title + tell main about unsaved changes
@@ -139,6 +148,7 @@ export default function App() {
       </main>
       <Toasts />
       <UnsavedDialog />
+      <ExportDialog />
     </div>
   )
 }

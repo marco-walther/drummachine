@@ -11,6 +11,7 @@ import {
   sampleSource,
   uid
 } from './project'
+import { normalizePatch } from './patch'
 import {
   STEP_TICKS,
   type Automation,
@@ -107,6 +108,7 @@ function readSource(v: unknown, samples: Record<string, SampleRef>): ChannelSour
       }
     }
   }
+  if (v.type === 'patcher') return normalizePatch(v)
   return null
 }
 

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react'
-import { AudioLines, ChevronDown, Drum, KeyboardMusic, Minus, Plus, ScanSearch } from 'lucide-react'
+import { AudioLines, ChevronDown, Drum, KeyboardMusic, Minus, Plus, ScanSearch, Workflow } from 'lucide-react'
+import { defaultPatch } from '@/state/patch'
 import { RecordToggle } from '@/components/RecordToggle'
 import { showPanel } from '@/workspace/layout'
 import {
@@ -54,7 +55,8 @@ export function ChannelSettings() {
 }
 
 export function SourceIcon({ source, className }: { source: ChannelSource; className?: string }) {
-  const Icon = source.type === 'synth' ? Drum : source.type === 'instrument' ? KeyboardMusic : AudioLines
+  const Icon =
+    source.type === 'synth' ? Drum : source.type === 'instrument' ? KeyboardMusic : source.type === 'patcher' ? Workflow : AudioLines
   return <Icon size={13} className={cn('shrink-0 text-muted', className)} />
 }
 
@@ -132,6 +134,15 @@ function SourcePicker({ channel }: { channel: Channel }) {
           </DropdownMenu>
           <Choice active={src.type === 'sample'} onClick={() => void pickSample()}>
             {src.type === 'sample' ? 'Replace sample…' : 'Your sample…'}
+          </Choice>
+          <Choice
+            active={src.type === 'patcher'}
+            onClick={() => {
+              if (src.type !== 'patcher') setChannelSource(channel.id, defaultPatch())
+              showPanel('patcher')
+            }}
+          >
+            {src.type === 'patcher' ? 'Open Patcher' : 'Patcher'}
           </Choice>
         </div>
       </div>

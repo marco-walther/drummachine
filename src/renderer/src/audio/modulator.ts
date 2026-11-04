@@ -29,6 +29,38 @@ export function connectStrips(fn: (channelId: string) => StripAccess | undefined
   getStrip = fn
 }
 
+/**
+ * Values automation/controllers currently hold on instrument and Patcher
+ * settings. Several can move one voice at once, so each update is the saved
+ * settings plus every held value, never just one of them.
+ */
+const held = new Map<ParamRef, number>()
+
+function applyHeld(channelId: string, voice: Voice) {
+  const src = useProject.getState().channels.find((x) => x.id === channelId)?.source
+  if (!src) return
+  const mine = [...held].map(([ref, v]) => [ref.split('.'), v] as const).filter(([[, ch]]) => ch === channelId)
+  if (src.type === 'instrument') {
+    const params = { ...src.params }
+    for (const [[k, , p], v] of mine) if (k === 'inst') params[p as keyof typeof params] = v
+    voice.update({ ...src, params })
+  } else if (src.type === 'patcher') {
+    voice.update({
+      ...src,
+      nodes: src.nodes.map((n) => {
+        if (n.kind === 'out') return n
+        let next = n
+        for (const [[k, , id, p], v] of mine) {
+          if (k !== 'patch' || id !== n.id) continue
+          if (next.kind === 'inst' && p === 'level') next = { ...next, level: v }
+          else next = { ...next, params: { ...next.params, [p]: v } } as typeof n
+        }
+        return next
+      })
+    })
+  }
+}
+
 type ParamTarget =
   | { kind: 'param'; param: Tone.Param<'decibels'> | Tone.Param<'audioRange'>; map(v: number): number }
   | { kind: 'set'; set(v: number): void }
@@ -49,12 +81,17 @@ function target(ref: ParamRef): ParamTarget | null {
     if (!p || (b === 'volume' && state.mixer[i]?.muted)) return null
     return b === 'volume' ? { kind: 'param', param: p.volume, map: (v) => gainToDb(Math.max(0.0001, v)) } : { kind: 'param', param: p.pan, map: (v) => v }
   }
-  if (kind === 'inst') {
+  if (kind === 'inst' || kind === 'patch') {
     const ch = state.channels.find((x) => x.id === a)
     const strip = getStrip(a)
-    if (!ch || !strip || ch.source.type !== 'instrument') return null
-    const src = ch.source
-    return { kind: 'set', set: (v) => strip.voice.update({ ...src, params: { ...src.params, [b]: v } }) }
+    if (!ch || !strip || ch.source.type !== (kind === 'inst' ? 'instrument' : 'patcher')) return null
+    return {
+      kind: 'set',
+      set: (v) => {
+        held.set(ref, v)
+        applyHeld(a, strip.voice)
+      }
+    }
   }
   if (kind === 'fx') return { kind: 'set', set: (v) => setFxParam(Number(a), b, c, v) }
   return null
@@ -70,9 +107,18 @@ function rampParam(ref: ParamRef, from: number, to: number, time: number, dur: n
     t.param.linearRampToValueAtTime(t.map(info.toValue(to)), time + dur)
   } else {
     // not an audio-rate param: apply at the right moment (step resolution is enough)
-    setTimeout(() => t.set(info.toValue(to)), Math.max(0, (time - Tone.immediate()) * 1000))
+    const timers = pending.get(ref) ?? new Set()
+    pending.set(ref, timers)
+    const h = setTimeout(() => {
+      timers.delete(h)
+      t.set(info.toValue(to))
+    }, Math.max(0, (time - Tone.immediate()) * 1000))
+    timers.add(h)
   }
 }
+
+/** queued (look-ahead) sets of non-audio-rate params, so a restore can cancel them */
+const pending = new Map<ParamRef, Set<ReturnType<typeof setTimeout>>>()
 
 /**
  * Put a parameter back to its saved value. Ramps already queued ahead by the
@@ -88,7 +134,14 @@ function restore(ref: ParamRef) {
     const now = Tone.immediate()
     t.param.cancelScheduledValues(now)
     t.param.setValueAtTime(t.map(value), now + 0.005)
-  } else t.set(value)
+  } else {
+    // like cancelScheduledValues above: queued sets must not land afterwards
+    for (const h of pending.get(ref) ?? []) clearTimeout(h)
+    pending.delete(ref)
+    t.set(value)
+    // back on the saved value: later edits to the knob must not be overridden
+    held.delete(ref)
+  }
 }
 
 // ---- automation clips (song mode, called from the scheduler) ----

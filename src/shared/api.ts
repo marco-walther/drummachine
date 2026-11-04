@@ -66,6 +66,14 @@ export interface Api {
     reveal(path: string): void
   }
 
+  export: {
+    /** Save dialog for a .wav file; null if cancelled. */
+    pickWavPath(suggestedName: string): Promise<string | null>
+    /** Write bytes to a path chosen by the user (wav only). */
+    writeWav(path: string, data: Uint8Array): Promise<void>
+    reveal(path: string): void
+  }
+
   project: {
     pickSavePath(suggestedName: string): Promise<string | null>
     pickOpenPath(): Promise<string | null>
@@ -81,6 +89,10 @@ export interface Api {
     /** Main asks the renderer to save before quitting. */
     onSaveBeforeQuit(cb: () => void): () => void
     quitNow(): void
+    /** The .dmproj the app was launched with (once), else null. */
+    takeLaunchFile(): Promise<string | null>
+    /** A .dmproj opened from Explorer while the app is running. */
+    onOpenFile(cb: (path: string) => void): () => void
   }
 }
 
